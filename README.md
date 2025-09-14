@@ -41,6 +41,11 @@ An extended encoding test of A2DP on Bluedroid，目的是整合已有资源，�
 - esp-idf/components/bt/host/bluedroid/stack/a2dp目录：是包括LDAC在内的各种拓展编码的源文件；
 - esp-idf/components/bt/host/bluedroid/stack/include/stack目录：是包括LDAC在内的各种拓展编码的头文件；
 - esp-idf/components/bt/host/bluedroid/external目录：是包括LDAC在内的各种拓展编码的external库；
+- esp-idf/components/bt/host/bluedroid/api/include/api目录：esp_a2dp_api.h：增加了esp_a2d_mcc_t结构体（A2DP media codec capabilities union）;
+- esp-idf/components/bt/host/bluedroid/btc/profile/std/a2dp/include目录：bt_av_co.h：增加了XXX_DEC_INCLUDE定义；
+- esp-idf/components/bt/host/bluedroid/common/include/common目录：bluedroid_user_config.h：增加了条件判断，如“ifdef CONFIG_BT_A2DP_XXX_DECODER define ... else ... endif”；
+- esp-idf/components/bt/host/bluedroid/common/include/common目录：bt_target.h：
+... 未完待续
 
 ## Plan
 
