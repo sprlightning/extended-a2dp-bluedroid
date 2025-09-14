@@ -21,9 +21,14 @@ An extended encoding test of A2DP on Bluedroid，目的是整合已有资源，�
 
 ## android_packages_modules_Bluetooth
 
-由web1n创建，提供了lhdc多个版本的完整协议，包括编解码器，适用于Android，详见：[android_packages_modules_Bluetooth](https://github.com/web1n/android_packages_modules_Bluetooth)。
+由web1n创建，提供了lhdc在内的多个编码的完整协议，包括编解码器，适用于Android，详见：[android_packages_modules_Bluetooth](https://github.com/web1n/android_packages_modules_Bluetooth)。
 
 很明显这个包集成了绝大多数A2DP编码，其源文件位于android_packages_modules_Bluetooth/system/stack/a2dp目录，包括LHDCV5和LHDC其他版本以及大多数主流编码的编码器和解码器的源文件；目录android_packages_modules_Bluetooth/system/stack/include则是对应这些编解码器的头文件。
+
+## bluez-alsa
+
+由arkq创建，也提供了多种编码，详见[bluez-alsa](https://github.com/arkq/bluez-alsa)。
+该项目主要适用于Linux环境。bluez-alsa/src目录便是这些拓展编码的源文件及头文件。
 
 ## esp-idf修改版
 
@@ -39,6 +44,6 @@ An extended encoding test of A2DP on Bluedroid，目的是整合已有资源，�
 
 ## Plan
 
-目前的计划是参考btstack_app_sf32、android_external_lhdc、android_packages_modules_Bluetooth库的LHDCV5编码相关内容，依据cfint的esp-idf修改版的蓝牙部分中A2DP拓展方式（上述内容都已在本库中已集成），为这个修改版esp-idf拓展LHDCV5编码，初步在esp32上依靠修改的esp-idf实现LHDC编码。
+目前的计划是参考btstack_app_sf32、android_external_lhdc、android_packages_modules_Bluetooth、bluez-alsa库的LHDCV5编码相关内容，依据cfint的esp-idf修改版的蓝牙部分中A2DP拓展方式（上述内容都已在本库中已集成），为这个修改版esp-idf拓展LHDCV5编码，初步在esp32上依靠修改的esp-idf实现LHDC编码。
 
 目前还处于试验阶段，欢迎各位朋友一同测试验证。
