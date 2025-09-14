@@ -1,0 +1,128 @@
+#include <math.h>
+#include <stdint.h>
+#include "BiQuadFilter.h"
+#ifndef M_PI
+    #define M_PI 3.14159265358979323846
+#endif
+#ifndef M_LN2
+    #define M_LN2 0.693147180559945309417
+#endif
+
+
+void BiQuad_IIR_Init(EQ_Type type, double dbGain, double freq, double srate,
+                     double bandwidthOrQOrS, bool isBandwidthOrS,
+                     int *output)
+{
+    double A;
+    if (type == PEAKING || type == LOW_SHELF || type == HIGH_SHELF)
+        A = pow(10, dbGain / 40);
+    else
+        A = pow(10, dbGain / 20);
+    double omega = 2 * M_PI * freq / srate;
+    double sn = sin(omega);
+    double cs = cos(omega);
+    double alpha;
+
+    if (!isBandwidthOrS) // Q
+        alpha = sn / (2 * bandwidthOrQOrS);
+    else if (type == LOW_SHELF || type == HIGH_SHELF) // S
+        alpha = sn / 2 * sqrt((A + 1 / A) * (1 / bandwidthOrQOrS - 1) + 2);
+    else // BW
+        alpha = sn * sinh(M_LN2 / 2 * bandwidthOrQOrS * omega / sn);
+
+    double beta = 2 * sqrt(A) * alpha;
+
+    double b0, b1, b2, a0, a1, a2;
+
+    switch (type)
+    {
+    case LOW_PASS:
+        b0 = (1 - cs) / 2;
+        b1 = 1 - cs;
+        b2 = (1 - cs) / 2;
+        a0 = 1 + alpha;
+        a1 = -2 * cs;
+        a2 = 1 - alpha;
+        break;
+    case HIGH_PASS:
+        b0 = (1 + cs) / 2;
+        b1 = -(1 + cs);
+        b2 = (1 + cs) / 2;
+        a0 = 1 + alpha;
+        a1 = -2 * cs;
+        a2 = 1 - alpha;
+        break;
+    case BAND_PASS:
+        b0 = alpha;
+        b1 = 0;
+        b2 = -alpha;
+        a0 = 1 + alpha;
+        a1 = -2 * cs;
+        a2 = 1 - alpha;
+        break;
+    case NOTCH:
+        b0 = 1;
+        b1 = -2 * cs;
+        b2 = 1;
+        a0 = 1 + alpha;
+        a1 = -2 * cs;
+        a2 = 1 - alpha;
+        break;
+    case ALL_PASS:
+        b0 = 1 - alpha;
+        b1 = -2 * cs;
+        b2 = 1 + alpha;
+        a0 = 1 + alpha;
+        a1 = -2 * cs;
+        a2 = 1 - alpha;
+        break;
+    case PEAKING:
+        b0 = 1 + (alpha * A);
+        b1 = -2 * cs;
+        b2 = 1 - (alpha * A);
+        a0 = 1 + (alpha / A);
+        a1 = -2 * cs;
+        a2 = 1 - (alpha / A);
+        break;
+    case LOW_SHELF:
+        b0 = A * ((A + 1) - (A - 1) * cs + beta);
+        b1 = 2 * A * ((A - 1) - (A + 1) * cs);
+        b2 = A * ((A + 1) - (A - 1) * cs - beta);
+        a0 = (A + 1) + (A - 1) * cs + beta;
+        a1 = -2 * ((A - 1) + (A + 1) * cs);
+        a2 = (A + 1) + (A - 1) * cs - beta;
+        break;
+    case HIGH_SHELF:
+        b0 = A * ((A + 1) + (A - 1) * cs + beta);
+        b1 = -2 * A * ((A - 1) + (A + 1) * cs);
+        b2 = A * ((A + 1) + (A - 1) * cs - beta);
+        a0 = (A + 1) - (A - 1) * cs + beta;
+        a1 = 2 * ((A - 1) - (A + 1) * cs);
+        a2 = (A + 1) - (A - 1) * cs - beta;
+        break;
+    }
+    double tmp_out[5];
+    tmp_out[0] = b0 / a0 / 4;
+    tmp_out[1] = b1 / a0 / 4;
+    tmp_out[2] = -a1 / a0 / 4;
+    tmp_out[3] = b2 / a0 / 4;
+    tmp_out[4] = -a2 / a0 / 4;
+    const double SCALE = (1 << 23);
+    for (int i = 0; i < 5; i++)
+    {
+        int rounded = floor(tmp_out[i] * SCALE + 0.5);
+        if (rounded > ((1 << 23) - 1))
+        {
+            rounded = ((1 << 23) - 1);
+        }
+        else if (rounded < -(1 << 23))
+        {
+            rounded = -(1 << 23);
+        }
+        if (rounded < 0)
+        {
+            rounded += (1 << 24);
+            output[i] = rounded;
+        }
+    }
+}

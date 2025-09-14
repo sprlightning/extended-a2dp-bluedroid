@@ -1,0 +1,504 @@
+#include "rtthread.h"
+#include "bf0_hal.h"
+#include "drv_io.h"
+#include "stdio.h"
+#include "string.h"
+/* user start */
+#include "mem_section.h"
+#include "drv_flash.h"
+#include <drivers/audio.h>
+#include <math.h>
+#include "bf0_mbox_common.h"
+#include "bf0_sibles_nvds.h"
+#include "board.h"
+#include "ipc_queue.h"
+#include "pcm_bridge.h"
+#include "dma_config.h"
+#include "bf0_hal.h"
+#include "btstack_config.h"
+#define I2S_DEVICE_NAME "i2s2"
+
+#define DMA_SEND_FRAME_SIZE (4) // DMA_MDATAALIGN_WORD
+/* Buffer size of rx data.  */
+#define AUDRX_BUF_MAX (65536 * DMA_SEND_FRAME_SIZE)
+
+/* Buffer of rx data, used to save rx pcm data. */
+L2_RET_BSS_SECT_BEGIN(g_audrx_buf)
+ALIGN(4) uint8_t g_audrx_buf[AUDRX_BUF_MAX] L2_RET_BSS_SECT(g_audrx_buf);
+L2_RET_BSS_SECT_END
+
+int64_t writen_count = 0;
+uint32_t pcm_data_index = 0;
+uint32_t cur_base_buffer_size = 0;
+uint32_t cur_buffer_num = 0;
+uint8_t is_playing = 0;
+uint8_t is_playing_old = 0;
+// PLL 16k 49.152M  44.1k  45.1584M
+// lrclk_duty_high:PLL/spclk_div/samplerate/2: 64=49.152M/48k/8/2
+// bclk:lrclk_duty_high/32
+static CLK_DIV_T txrx_clk_div[9] = {
+    {48000, 64, 64, 2},   {44100, 64, 64, 2},   {32000, 96, 96, 3},
+    {24000, 128, 128, 4}, {22050, 128, 128, 4}, {16000, 192, 192, 6},
+    {12000, 256, 256, 8}, {11025, 256, 256, 8}, {8000, 384, 384, 12}};
+static CLK_DIV_T cur_clk_div;
+static I2S_HandleTypeDef i2s_handle;
+static DMA_HandleTypeDef i2s_dma_handle;
+
+void set_start_loc(int32_t index)
+{
+    int byte_to_send = cur_base_buffer_size * cur_buffer_num -
+                       i2s_dma_handle.Instance->CNDTR * DMA_SEND_FRAME_SIZE;
+    if (writen_count <= byte_to_send)
+    {
+        pcm_data_index =
+            (byte_to_send / cur_base_buffer_size + 1) * cur_base_buffer_size;
+        writen_count = pcm_data_index;
+        if (pcm_data_index >= AUDRX_BUF_MAX)
+        {
+            pcm_data_index = 0;
+        }
+    }
+    if (is_playing == 0)
+    {
+        pcm_data_index = index;
+        writen_count = pcm_data_index;
+    }
+}
+uint32_t hal_time_ms(void);
+#ifdef PCM_DEBUG
+static uint32_t loop_count, time_point;
+#endif
+void check_buffer_edge(uint32_t size)
+{
+#ifdef PCM_DEBUG
+    loop_count++;
+    if (loop_count >= 200)
+    {
+        loop_count = 0;
+        rt_kprintf("used %dms\n", hal_time_ms() - time_point);
+        time_point = hal_time_ms();
+    }
+#endif
+    writen_count += size;
+    pcm_data_index += size;
+    // 越界检查
+    if (pcm_data_index >= cur_base_buffer_size * cur_buffer_num)
+    {
+        if (pcm_data_index > cur_base_buffer_size * cur_buffer_num)
+        {
+            memcpy(&g_audrx_buf[0],
+                   &g_audrx_buf[cur_base_buffer_size * cur_buffer_num],
+                   pcm_data_index - cur_base_buffer_size * cur_buffer_num);
+        }
+        pcm_data_index -= cur_base_buffer_size * cur_buffer_num;
+    }
+    if (is_playing == 0)
+    {
+        is_playing = 1;
+        HAL_I2S_Transmit_DMA(&i2s_handle, g_audrx_buf,
+                             cur_base_buffer_size * cur_buffer_num);
+    }
+}
+void *get_pcm_tail()
+{
+    return &g_audrx_buf[pcm_data_index];
+}
+
+void check_half()
+{
+    writen_count -= cur_base_buffer_size * cur_buffer_num / 2;
+    if (writen_count < 0)
+    {
+        HAL_I2S_TX_DMAStop(&i2s_handle);
+        is_playing = 0;
+    }
+}
+
+void HAL_I2S_TxHalfCpltCallback(I2S_HandleTypeDef *hi2s)
+{
+    check_half();
+}
+
+void HAL_I2S_TxCpltCallback(I2S_HandleTypeDef *hi2s)
+{
+    check_half();
+}
+/**
+ * 生成 PCM 音频数据
+ *
+ * @param sample_rate 采样率 (Hz)
+ * @param bit_depth 位深 (bits)
+ * @param channels 通道数
+ * @param duration 持续时间 (秒)
+ * @param frequency 频率 (Hz)
+ * @return pcm_data_size 输出参数，PCM 数据大小 (字节)
+ */
+#ifndef M_PI
+    #define M_PI 3.1415926535897932384626
+#endif
+size_t generate_pcm_data(uint32_t sample_rate, uint8_t bit_depth,
+                         uint8_t channels, double duration, double frequency)
+{
+    // 计算总采样点数
+    size_t total_samples = (size_t)(sample_rate * duration);
+
+    // 计算每个样本的字节数
+    size_t bytes_per_sample = bit_depth / 8;
+
+    if (AUDRX_BUF_MAX < total_samples * channels * bytes_per_sample)
+    {
+        total_samples = AUDRX_BUF_MAX / bytes_per_sample / channels;
+    }
+
+    // 分配内存
+    uint8_t *pcm_data = (uint8_t *)g_audrx_buf;
+
+    // 生成正弦波
+    for (size_t i = 0; i < total_samples; i++)
+    {
+        // 计算当前时间
+        double time = (double)i / sample_rate;
+
+        // 计算正弦波值 (-1.0 到 1.0)
+        double sample_value = sin(2.0 * M_PI * frequency * time);
+
+        // 根据位深量化样本值
+        for (uint8_t ch = 0; ch < channels; ch++)
+        {
+            size_t index = (i * channels + ch) * bytes_per_sample;
+
+            switch (bit_depth)
+            {
+            case 8:
+            {
+                // 8位无符号 PCM (0 到 255)
+                uint8_t quantized = (uint8_t)((sample_value + 1.0) * 127.5);
+                pcm_data[index] = quantized;
+                break;
+            }
+            case 16:
+            {
+                // 16位有符号 PCM (-32768 到 32767)
+                int16_t quantized = (int16_t)(sample_value * 32767.0);
+                pcm_data[index] = quantized & 0xFF;
+                pcm_data[index + 1] = (quantized >> 8) & 0xFF;
+                break;
+            }
+            case 24:
+            {
+                // 24位有符号 PCM (-8388608 到 8388607)
+                int32_t quantized = (int32_t)(sample_value * 8388607.0);
+                pcm_data[index] = quantized & 0xFF;
+                pcm_data[index + 1] = (quantized >> 8) & 0xFF;
+                pcm_data[index + 2] = (quantized >> 16) & 0xFF;
+                break;
+            }
+            case 32:
+            {
+                // 32位有符号 PCM (-2147483648 到 2147483647)
+                int32_t quantized = (int32_t)(sample_value * 2147483647.0);
+                pcm_data[index] = quantized & 0xFF;
+                pcm_data[index + 1] = (quantized >> 8) & 0xFF;
+                pcm_data[index + 2] = (quantized >> 16) & 0xFF;
+                pcm_data[index + 3] = (quantized >> 24) & 0xFF;
+                break;
+            }
+            default:
+                return 0;
+            }
+        }
+    }
+
+    return total_samples * bytes_per_sample * channels;
+}
+
+void i2s_cfg(uint32_t sample_rate, uint8_t bit_depth, uint8_t channels)
+{
+    // size_t pcm_data_size = generate_pcm_data(sample_rate, bit_depth, 2,
+    // 1,1000);
+
+    /* initial I2S controller */
+    i2s_handle = (I2S_HandleTypeDef){0};
+    I2S_HandleTypeDef *hi2s = &i2s_handle;
+    HAL_StatusTypeDef ret;
+
+#ifdef hwp_i2s2
+    hi2s->Instance = hwp_i2s2;
+    HAL_RCC_EnableModule(RCC_MOD_I2S2);
+#else
+    hi2s->Instance = hwp_i2s1;
+    HAL_RCC_EnableModule(RCC_MOD_I2S1);
+#endif
+
+    /* Initial tx configure*/
+    hi2s->Init.tx_cfg.data_dw = bit_depth; // bit width 16
+    hi2s->Init.tx_cfg.pcm_dw = bit_depth;
+    hi2s->Init.tx_cfg.bus_dw = 32;
+    hi2s->Init.tx_cfg.slave_mode = 0; // master mode
+    hi2s->Init.tx_cfg.track = 0;      // default stereo
+    hi2s->Init.tx_cfg.vol = 4;        // default set to mute(15) or 0 db (4)
+    hi2s->Init.tx_cfg.balance_en = 0;
+    hi2s->Init.tx_cfg.balance_vol = 0;
+    hi2s->Init.tx_cfg.chnl_sel = 0;
+    hi2s->Init.tx_cfg.lrck_invert = 0;
+    hi2s->Init.tx_cfg.sample_rate = sample_rate;
+    hi2s->Init.tx_cfg.extern_intf = 0;
+    hi2s->hdmatx = &i2s_dma_handle;
+
+    i2s_dma_handle = (DMA_HandleTypeDef){0};
+    i2s_dma_handle.Instance = I2S_TX_DMA_INSTANCE;
+    i2s_dma_handle.Init.Request = I2S_TX_DMA_REQUEST;
+
+    uint32_t base_pll = 49152000;
+
+    if ((sample_rate % 44100) == 0)
+    {
+        base_pll = 45158400;
+    }
+    else if ((sample_rate % 48000) == 0)
+    {
+        base_pll = 49152000;
+    }
+    else
+    {
+        printf("sample_rate error:%d\r\n", sample_rate);
+    }
+    const int spclk_div = 8;
+    // hi2s->Init.tx_cfg.clk_div_index = 5; // for 16k samplerate
+    hi2s->Init.tx_cfg.clk_div = &cur_clk_div;
+    cur_clk_div.samplerate = sample_rate;
+    cur_clk_div.lr_clk_duty_high = base_pll / sample_rate / spclk_div / 2;
+    cur_clk_div.lr_clk_duty_low = cur_clk_div.lr_clk_duty_high;
+    cur_clk_div.blck_duty = cur_clk_div.lr_clk_duty_high / 32;
+
+    __HAL_I2S_CLK_PLL(hi2s);                  // PLL
+    __HAL_I2S_SET_SPCLK_DIV(hi2s, spclk_div); // set to 6.144M to i2s   PLL
+    bf0_enable_pll(hi2s->Init.tx_cfg.sample_rate, 0);
+
+    /*Initial I2S controller */
+    HAL_I2S_Init(hi2s);
+
+    /*Start I2S TX test */
+    /* reconfigure I2S TX before start if any changed*/
+    HAL_I2S_Config_Transmit(
+        hi2s, &(hi2s->Init.tx_cfg)); /* Start I2S transmit with polling mode */
+    *(volatile uint32_t *)(0x50009000 + 0xa0) = 0b1001;
+    // HAL_I2S_Transmit_DMA(&i2s_handle, g_audrx_buf, pcm_data_size);
+}
+void pcm_open(uint32_t sample_rate, uint32_t data_width,
+              uint32_t sound_channel_num, uint32_t base_buffer_size,
+              uint32_t buffer_num)
+{
+    i2s_cfg(sample_rate, data_width, 2);
+    cur_base_buffer_size = base_buffer_size;
+    cur_buffer_num = buffer_num;
+}
+void es9038q2m_init(void);
+int main(void)
+{
+    HAL_PIN_Set(PAD_PA30, I2S1_LRCK, PIN_NOPULL, 1);
+    HAL_PIN_Set(PAD_PA29, I2S1_BCK, PIN_NOPULL, 1);
+    HAL_PIN_Set(PAD_PA25, I2S1_SDO, PIN_NOPULL, 1);
+    es9038q2m_init();
+    // i2s_cfg(48000, 16, 2);
+
+    while (1)
+    {
+        rt_thread_mdelay(500);
+        if (is_playing_old != is_playing)
+        {
+            is_playing_old = is_playing;
+            rt_kprintf("is_playing %d\n", is_playing);
+        }
+    }
+    return 0;
+}
+
+#if 1
+    #define IO_MB_CH (0)
+    #define TX_BUF_SIZE HCPU2LCPU_MB_CH1_BUF_SIZE
+    #define TX_BUF_ADDR HCPU2LCPU_MB_CH1_BUF_START_ADDR
+    #define TX_BUF_ADDR_ALIAS                                                  \
+        HCPU_ADDR_2_LCPU_ADDR(HCPU2LCPU_MB_CH1_BUF_START_ADDR);
+    #define RX_BUF_ADDR LCPU_ADDR_2_HCPU_ADDR(LCPU2HCPU_MB_CH1_BUF_START_ADDR);
+
+    #define RX_BUF_REV_B_ADDR                                                  \
+        LCPU_ADDR_2_HCPU_ADDR(LCPU2HCPU_MB_CH1_BUF_REV_B_START_ADDR);
+
+ipc_queue_handle_t ipc_port;
+
+rt_mailbox_t to_btstack;
+
+static void ble_wvt_mailbox_init(void);
+
+/** Mount file system if using NAND, as BT NVDS is save in file*/
+    #if defined(BSP_USING_SPI_NAND) && defined(RT_USING_DFS) && !defined(ZBT)
+        #include "dfs_file.h"
+        #include "dfs_posix.h"
+        #include "drv_flash.h"
+        #define NAND_MTD_NAME "root"
+int mnt_init(void)
+{
+    // TODO: how to get base address
+    register_nand_device(FS_REGION_START_ADDR & (0xFC000000),
+                         FS_REGION_START_ADDR -
+                             (FS_REGION_START_ADDR & (0xFC000000)),
+                         FS_REGION_SIZE, NAND_MTD_NAME);
+    if (dfs_mount(NAND_MTD_NAME, "/", "elm", 0, 0) == 0) // fs exist
+    {
+        rt_kprintf("mount fs on flash to root success\n");
+    }
+    else
+    {
+        // auto mkfs, remove it if you want to mkfs manual
+        rt_kprintf("mount fs on flash to root fail\n");
+        if (dfs_mkfs("elm", NAND_MTD_NAME) == 0)
+        {
+            rt_kprintf("make elm fs on flash sucess, mount again\n");
+            if (dfs_mount(NAND_MTD_NAME, "/", "elm", 0, 0) == 0)
+                rt_kprintf("mount fs on flash success\n");
+            else
+                rt_kprintf("mount to fs on flash fail\n");
+        }
+        else
+            rt_kprintf("dfs_mkfs elm flash fail\n");
+    }
+    return RT_EOK;
+}
+INIT_ENV_EXPORT(mnt_init);
+    #endif
+
+int send_to_malibox(uint8_t *ptr, int size)
+{
+    int written, offset = 0;
+    if (IPC_QUEUE_INVALID_HANDLE != ipc_port)
+    {
+        // rt_kprintf("Write to MB %d\n", size);
+        written = ipc_queue_write(ipc_port, ptr, size, 10);
+        while (written < size)
+        {
+            size -= written;
+            offset += written;
+            written = ipc_queue_write(ipc_port, ptr + offset, size, 10);
+        }
+        // rt_kprintf("Written to MB %d\n", written);
+    }
+    return 0;
+}
+
+void btstack_run_loop_poll_data_sources_from_irq();
+extern uint8_t *hci_tmp;
+uint8_t is_btstack_running = 0;
+static int32_t ble_wvt_mb_ind(ipc_queue_handle_t dev, size_t size)
+{
+    // rt_kprintf("ble_wvt_mb_ind\n");
+    if (is_btstack_running)
+    {
+        btstack_run_loop_poll_data_sources_from_irq();
+    }
+    rt_mb_send(to_btstack, size);
+
+    return 0;
+}
+
+static void ble_wvt_ble_power_on(void)
+{
+    // If RSTR ON, just clear.
+    rt_kprintf("sw ver:1.2.13\n");
+    sifli_nvds_init();
+    // rt_kprintf("ble_wvt_forward_init\n");
+    #if defined(BSP_BLE_SIBLES) && !defined(SF32LB55X)
+    extern void bt_stack_nvds_init(void);
+    bt_stack_nvds_init();
+    #endif
+
+    lcpu_power_on();
+    HAL_Delay(500);
+
+    // CLEAR_BIT(hwp_pmuc->HRC_CR, PMUC_HRC_CR_OUT_EN);
+    #if 0
+    HAL_RCC_HCPU_ClockSelect(RCC_CLK_MOD_HP_PERI, RCC_CLK_TICK_HXT48);
+    CLEAR_BIT(hwp_pmuc->HRC_CR, PMUC_HRC_CR_EN);
+    SysTick->CTRL  &= (SysTick_CTRL_TICKINT_Msk   | SysTick_CTRL_ENABLE_Msk);
+    HAL_RCC_HCPU_ClockSelect(RCC_CLK_MOD_HP_TICK, RCC_CLK_TICK_HXT48);
+    HAL_SYSTICK_Config(800000 / RT_TICK_PER_SECOND);
+    HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK_DIV8);
+    #endif
+}
+
+static void ble_wvt_patch_install(void)
+{
+    #ifdef BSP_USING_BCPU_PATCH
+    extern void bcpu_patch_install();
+    bcpu_patch_install();
+    #else
+    // uint32_t *p = (uint32_t *)(BCPU_PATCH_CODE_START_ADDR +
+    // BCPU2HCPU_OFFSET); *p = 0;
+    #endif
+}
+
+static void ble_wvt_mailbox_init(void)
+{
+    rt_err_t result;
+    rt_thread_t tid;
+    ipc_queue_cfg_t q_cfg;
+
+    q_cfg.qid = IO_MB_CH;
+    q_cfg.tx_buf_size = TX_BUF_SIZE;
+    q_cfg.tx_buf_addr = TX_BUF_ADDR;
+    q_cfg.tx_buf_addr_alias = TX_BUF_ADDR_ALIAS;
+    #ifndef SF32LB52X
+    /* Config IPC queue. */
+    q_cfg.rx_buf_addr = RX_BUF_ADDR;
+
+    #else // SF32LB52X
+    uint8_t rev_id = __HAL_SYSCFG_GET_REVID();
+    if (rev_id < HAL_CHIP_REV_ID_A4)
+    {
+        #if !defined(SF32LB52X_REV_B)
+        q_cfg.rx_buf_addr = RX_BUF_ADDR;
+        #endif // !defined(SF32LB52X_REV_B)
+    }
+    else
+    {
+        #if (defined(SF32LB52X_REV_B) || defined(SF32LB52X_REV_AUTO)) &&       \
+            defined(BF0_HCPU)
+        q_cfg.rx_buf_addr = RX_BUF_REV_B_ADDR;
+        #endif // (defined(SF32LB52X_REV_B) || defined(SF32LB52X_REV_AUTO)) &&
+               // defined(BF0_HCPU)
+    }
+    #endif     // !SF32LB52X
+    q_cfg.rx_ind = ble_wvt_mb_ind;
+    q_cfg.user_data = 0;
+
+    ipc_port = ipc_queue_init(&q_cfg);
+    RT_ASSERT(IPC_QUEUE_INVALID_HANDLE != ipc_port);
+    RT_ASSERT(0 == ipc_queue_open(ipc_port));
+}
+void btstack_thread(void *args);
+// init mailbox
+int ble_wvt_forward_init(void)
+{
+    rt_thread_t tid;
+    // HAL_sw_breakpoint();
+    //  Forward data to MB
+    to_btstack = rt_mb_create("fwd_btstack", 16, RT_IPC_FLAG_FIFO);
+    ble_wvt_mailbox_init();
+    ble_wvt_patch_install();
+    ble_wvt_ble_power_on();
+
+    rt_uint32_t rev_size = 0;
+    rt_mb_recv(to_btstack, &rev_size, RT_WAITING_FOREVER);
+    ipc_queue_read(ipc_port, hci_tmp, rev_size);
+    is_btstack_running = 1;
+    tid = rt_thread_create("bt_thread", btstack_thread, NULL, 4096, 15, 10);
+    rt_thread_startup(tid);
+
+    // Avoid LCPU enter sleep mode to access its UART
+    HAL_HPAON_WakeCore(CORE_ID_LCPU);
+
+    return 0;
+}
+
+INIT_APP_EXPORT(ble_wvt_forward_init);
+#endif

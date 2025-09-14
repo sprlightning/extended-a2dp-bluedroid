@@ -1,0 +1,41 @@
+import os
+from building import *
+Import('RTT_ROOT')
+Import('rtconfig')
+Import('SIFLI_SDK')
+# Add source code
+src = Glob('*.c')
+cwd = GetCurrentDir() # get current dir path
+inc = [
+    cwd+'/codecs/LHDCV5/lhdcv5/liblhdcv5dec/include',
+    cwd+'/codecs/LHDCV5/lhdcv5/liblhdcv5dec/inc',
+    cwd+'/codecs/LHDCV5/lhdcv5/inc',
+    cwd+'/codecs/LHDCV5/lhdcv5/liblhdcv5dec/src/dec/lhdc_v5_dec',
+    cwd+'/codecs/LHDCV5/lhdcv5/liblhdcv5dec/src/dec'
+]
+if True:
+    src += Glob('codecs/LHDCV5/lhdcv5_decoder.c')
+
+    src += Glob('codecs/SBC/sbc_decoder.c')
+    src += Glob('codecs/SBC/sbc-2.0/sbc/sbc.c')
+    src += Glob('codecs/SBC/sbc-2.0/sbc/sbc_primitives.c')
+
+    src += Glob('codecs/LDAC/external_libldac/src/ldacBT.c')
+    src += Glob('codecs/LDAC/external_libldac/src/ldaclib.c')
+    src += Glob('codecs/LDAC/ldac_decoder.c')
+    for root, dirs, files in os.walk(cwd):
+        for f in files:
+            # print(os.path.join(root,f).replace('\\','/'))
+            if (f).endswith('.h') and 'LHDCV5' not in root:
+                inc.append(root.replace('\\','/'))
+
+    src += Glob('codecs/LHDCV5/lhdcv5/liblhdcv5dec/src/dec/lhdc_v5_dec/*.c')
+    src += Glob('codecs/LHDCV5/lhdcv5/liblhdcv5dec/src/dec/lhdcv5_util_dec.c')
+    src += Glob('codecs/LHDCV5/lhdcv5/liblhdcv5dec/src/lhdcv5BT_dec.c')
+    #src += Glob(os.path.join(SIFLI_SDK, 'external/libbtstack/example/spp_streamer.c'))
+
+    src.extend(SConscript(os.path.join(SIFLI_SDK, 'example/bt/btstack/src/port/SConscript'), variant_dir="libbtstack", duplicate=0))
+LOCAL_CCFLAGS = ' -Wno-incompatible-pointer-types'
+group = DefineGroup('Applications', src, depend = [''],LOCAL_CCFLAGS = LOCAL_CCFLAGS, CPPPATH = inc)
+
+Return('group')
