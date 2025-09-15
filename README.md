@@ -8,7 +8,7 @@ An extended encoding test of A2DP on Bluedroid，目的是整合已有资源，�
 
 关于LHDCV5解码相关的内容是位于：btstack_app_sf32/src/codecs/LHDCV5的lhdcv5_coder.h和lhdcv5_decoder.c，以及btstack_app_sf32/src的a2dp_decoder.c和a2dp_decoder.h；
 
-不过注意，其缺少"lhdc_v5_dec.h"、"lhdc_v5_dec_workspace.h"、"lhdcv5BT_dec.h"这三个文件，咨询过作者，这部分目前不会被开源。
+不过注意，其缺少"lhdc_v5_dec.h"、"lhdc_v5_dec_workspace.h"、"lhdcv5BT_dec.h"这三个文件，咨询过作者，这部分暂时不会被开源。
 
 ## android_external_lhdc
 
@@ -62,8 +62,104 @@ esp-idf/components/bt/host/bluedroid/external目录：是包括LDAC在内的各�
 - esp-idf/components/bt/host/bluedroid/common/include/common目录：bluedroid_user_config.h：增加了条件判断，如“#ifdef CONFIG_BT_A2DP_LDAC_DECODER #define UC_BT_A2DP_LDAC_DECODER_ENABLED    CONFIG_BT_A2DP_LDAC_DECODER #define UC_BT_A2DP_LDAC_DECODER_ENABLED    FALSE #endif”，用来控制相关的解码器是否启用；
 - esp-idf/components/bt/host/bluedroid/common/include/common目录：bt_target.h：当经典蓝牙启用时，判断对应的解码器是否有启用的宏定义（bluedroid_user_config.h中的宏定义），然后据此来定义LDAC_DEC_INCLUDE是否为TRUE；然后还有依据CONFIG_BT_A2DP_LDAC_DECODER是否定义来定义AVDT_LDAC_SEPS的值，进而定义AVDT_NUM_SEPS的值；
 
-## Plan
+## Plan1
 
-目前的计划是参考btstack_app_sf32、android_external_lhdc、android_packages_modules_Bluetooth、bluez-alsa库的LHDCV5编码相关内容，依据cfint的esp-idf修改版的蓝牙部分中A2DP拓展方式（上述内容都已在本库中已集成），为这个修改版esp-idf拓展LHDCV5编码，初步在esp32上依靠修改的esp-idf实现LHDC编码。
+（√）目前的计划是参考btstack_app_sf32、android_external_lhdc、android_packages_modules_Bluetooth、bluez-alsa库的LHDCV5编码相关内容，依据cfint的esp-idf修改版的蓝牙部分中A2DP拓展方式（上述内容都已在本库中已集成），为这个修改版esp-idf拓展LHDCV5编码，初步在esp32上依靠修改的esp-idf实现LHDC编码。
 
-目前还处于试验阶段，欢迎各位朋友一同测试验证。
+目前Plan1已完成，详见Test1。其内容目前还处于试验阶段，欢迎各位朋友一同测试验证。
+
+## Test1 
+
+O2C14开源了部分LHDCV5代码，需要结合Github的Android-LHDCV5代码进行补充&移植适配；O2C14的代码基于btstack蓝牙协议栈，Github的LHDCV5基于Android，而ESP_-IDF使用的是Bluedroid；
+
+### Step1-代码文件补全
+
+O2C14开源的代码是btstack_app_sf32，缺失的是"lhdc_v5_dec.h"、"lhdc_v5_dec_workspace.h"、"lhdcv5BT_dec.h"这三个文件；  
+
+其中的"lhdcv5BT_dec.h"可以从库android_external_lhdc找到，而在这个库中又存在"lhdcv5BT_dec.c"文件，又包含了“lhdcv5_util_dec.h”；  
+
+所以下列8个文件需要被补充到btstack_app_sf32中：
+
+- "lhdc_v5_dec.h"、"lhdc_v5_dec.c"；
+- "lhdc_v5_dec_workspace.h"、"lhdc_v5_dec_workspace.c"；
+- "lhdcv5BT_dec.h"、"lhdcv5BT_dec.c"；
+- "lhdcv5_util_dec.h”、“lhdcv5_util_dec.c"；
+
+上述8个文件已经编写完成并存放到esp-idf-test1/components/bt/host/bluedroid/external/lhdcv5/liblhdcv5dec目录，已按照inc、include、src进行分类；
+
+### Step2-逻辑验证 
+
+还需要验证补全后的btstack_app_sf32中LHDCV5逻辑是否存在问题；暂未发现问题；
+
+### Step3-拓展LHDCV5编码  
+
+参考ESP-IDF中Bluedroid-A2DP的编码拓展方式，拓展LHDCV5编码；Step1中的文件在验证后可作为external lhdcv5库来使用；然后还需编写适用于ESP-IDF的LHDCV5编码文件，包括系列文件：
+- "a2dp_vendor_lhdcv5.h"、"a2dp_vendor_lhdcv5.c；
+- "a2dp_vendor_lhdcv5_decoder.h"、"a2dp_vendor_lhdcv5_decoder.c"；
+- "a2dp_vendor_lhdcv5_constants.h"
+
+上述5个文件已编写完成，源文件已存放到esp-idf-test1/components/bt/host/bluedroid/stack/a2dp目录，头文件已存放到esp-idf-test1/components/bt/host/bluedroid/stack/a2dp/include/stack目录；
+
+### Step4-ESP-IDF放入LHDCV5编码文件
+
+#### LHDCV5主要文件
+
+（√）参考LDAC，将Step3中的源文件和头文件放到对应的目录中：
+
+- 源文件放到：components/bt/host/bluedroid/stack/a2dp目录
+- 头文件放到：components/bt/host/bluedroid/stack/a2dp/include/stack目录
+
+#### 拓展库  
+
+（√）将Step1中编写的拓展库文件放到components/bt/host/bluedroid/external/lhdcv5/liblhdcv5dec目录，并按照inc、include、src进行分类，并编写CMakeLists.txt：
+
+- inc：公共头文件；
+- include：私有头文件，其实就是“lhdcv5_util_dec.h”；
+- src：所有的源文件；
+
+拓展库不是必须的，可以先保留。
+
+### Step5-ESP-IDF修改现有文件  
+
+（√）这是最主要的步骤，目的是把引入的LHDCV5编码文件接入到ESP-IDF Bluedroid A2DP环境；
+- 修改 components/bt/CMakeLists.txt，添加 LHDCV5 相关文件编译；
+- 修改 components/bt/host/bluedroid/Kconfig.in，添加 menuconfig 选项；
+- 修改 components/bt/host/bluedroid/stack/a2dp/a2dp_vendor.c，添加 LHDCV5 支持；
+- 修改 components/bt/host/bluedroid/stack/a2dp/include/ bt_av.h，添加 LHDCV5 编码索引；
+- 修改 components/bt/host/bluedroid/common/include/common/bluedroid_user_config.h，增加宏定义配置；
+- 修改 components/bt/host/bluedroid/common/include/common/bt_target.h，增加宏定义配置，并配置AVDT_NUM_SEPS；
+- 修改 components/bt/host/bluedroid/api/include/api/esp_a2dp_api.h，添加 LHDCV5 到联合体；
+
+这部分也已经修改完成。
+
+### 编译纠错
+
+目前LHDCV5主要编码文件和拓展库文件已存放到测试版esp-idf-test1对应的目录中。
+
+测试版esp-idf-test1与cfint的esp-idf相比，仅提供了新增、修改的内容，未做变更的文件未保留（直接参考cfint版esp-idf即可）；
+
+## Plan2
+
+在Test1中，已结合android_external_lhdc库完成O2C14版btstack_app_sf32中缺失文件的拓展及esp32的适配（仅编译通过了，不能保证功能可用），包含8个文件已被放到esp-idf-test1/components/bt/host/bluedroid/external/lhdcv5/liblhdcv5dec目录；
+
+在Test1中，已依据a2dp_vendor.c等文件的需求，结合本仓库其余LHDCV5资源，编写了适用于esp-idf的文件（仅编译通过了，不能保证功能可用），包含5个文件，源文件已存放到esp-idf-test1/components/bt/host/bluedroid/stack/a2dp目录，头文件已存放到esp-idf-test1/components/bt/host/bluedroid/stack/a2dp/include/stack目录；
+
+在Test1中已修改esp-idf现存的文件，融合了添加进来的LHDCV5编码文件（仅编译通过了，不能保证功能可用，但这部分内容相对可靠些），这些内容也存放的了esp-idf-test1对应的目录中；
+
+下面是一些细节需要补充：
+
+1）components/bt/host/bluedroid/stack/a2dp/a2dp_vendor.c参考LDAC等编码，主要增加了10个适用于LHDCV5的函数，
+
+其定义位于：esp-idf-test1/components/bt/host/bluedroid/stack/a2dp/a2dp_vendor_lhdcv5.c；
+
+声明位于：esp-idf-test1/components/bt/host/bluedroid/stack/include/stack/a2dp_vendor_lhdcv5.h
+
+目前这些函数的功能无法保证可用；
+
+2）esp-idf-test1/components/bt/host/bluedroid/api/include/api/esp_a2dp_api.h里面关于CIE联合体的定义中，#define ESP_A2D_CIE_LEN_LHDCV5的值不一定是8，这是我随手填的，需要结合本仓库其余LHDCV5编码文件就行修正；
+
+3）最后强调，esp-idf-test1的主要内容仅是esp-idf的新增/修改文件，其余未变更的文件仍需要从esp-idf中拷贝过来使用；还有就是esp-idf-test1中的文件在与esp-idf合并后，仅仅是编译通过，功能显然是存在问题的，因为很多函数未实际编写具体内容；
+
+所以esp-idf-test1中的内容仅供参考，仅作为能在esp-idf框架下能编译通过的示例，其内容要基于本库中其余完整LHDCV5编码重新分析、纠正错误定义/逻辑、编写完整所需的功能、实现所有函数具体的内容。
+
+我正在试图实现这些内容，所有内容已提交的本仓库中，欢迎朋友们参与测试。
