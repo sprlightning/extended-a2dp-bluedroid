@@ -1,6 +1,6 @@
 # extended-a2dp-bluedroid
 
-An extended encoding test of A2DP on Bluedroid，目的是整合已有资源，在sf32/esp32上验证LHDCV5等A2DP拓展编码，目前AAC、aptX[-LL & -HD]、LDAC、LC3 Plus、OPUS已验证可用，还剩下LHDC未测试。
+An extended encoding test of A2DP on Bluedroid，目的是整合已有资源，在sf32/esp32上验证LHDCV5等A2DP拓展编码，目前AAC、aptX[-LL & -HD]、LDAC、LC3 Plus、OPUS已验证可用，还剩下LHDC未移植也未测试。
 
 ## btstack_app_sf32
 
