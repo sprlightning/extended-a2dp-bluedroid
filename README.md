@@ -387,7 +387,9 @@ target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=implicit-function-declar
 	} __attribute__((packed)) esp_a2d_mcc_t;
 	```
 	
-esp-idf现存文件要修改的就是上面这些，本质上是依葫芦画瓢，没什么难度；
+esp-idf现存文件要修改的就是上面这些，本质上是依葫芦画瓢，没什么难度；  
+
 难的是上面说的从Android到esp-idf Bluedroid的LHDCV5的解码器相关内容的移植，既要考虑esp-idf的需求（a2dp_vendor.c明确提出了10个函数），同时要考虑Android中LHDCV5的完整逻辑；
+
 欢迎感兴趣的朋友一同测试交流经验；
 
