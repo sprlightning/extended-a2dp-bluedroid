@@ -88,9 +88,13 @@ lhdcv5解码器头文件位于android_packages_modules_Bluetooth/system/stack/in
 
 总之这个Android包，具有很大的参考价值，移植时应当优先考虑；
 
+### bluez-alsa
+
+这是Linux方面的A2DP库，其中的lhdc看起来不是最新版。不过也可以用参考，毕竟有些逻辑也是通用的，如果Android那边找不到可以来这看看。
+
 ### android_external_lhdc
 
-也是适用于Android环境，相当于是一个LHDC拓展库，也据有很大的参考价值。
+也是适用于Android/Linux环境，相当于是一个LHDC拓展库，也据有很大的参考价值。
 
 其中liblhdcv5dec目录的lhdcv5BT_dec.c/.h显然是lhdcv5解码器拓展库，其在很多LHDCV5应用中都被调用过。
 
@@ -98,7 +102,7 @@ lhdcv5解码器头文件位于android_packages_modules_Bluetooth/system/stack/in
 
 此外还有liblhdcdec和liblhdc，显然是其它lhdc版本的编解码器拓展库；
 
-总之这个拓展库，具有很大的参考价值，作为拓展库，一般情况移植只需要更换log输出函数即可；
+考虑到众多案例都有使用这个库的情况，这个库应该具有很大的参考价值，作为拓展库，一般情况移植只需要更换log输出函数即可；
 
 ### btstack_app_sf32O2C14
 
@@ -154,9 +158,9 @@ const tA2DP_DECODER_INTERFACE* A2DP_GetVendorDecoderInterfaceLhdcv5(const uint8_
 
 #### lhdcv5拓展库
 
-lhdcv5拓展库不是必须的，仅当Android包的内容无法满足esp-idf中a2dp_vendor提出的“10个函数”的需求，又或者是Android包也依赖这拓展库时才考虑使用；
+前面提到众多LHDC案例都“习惯性”使用android_external_lhdc库的内容，一定是有他的存在价值的，所以这里也将其作为拓展库，按照下面的方式配置；
 
-假如要启用拓展库的话，则是将android_external_lhdc中的lhdcv5dec的内容放到components/bt/host/bluedroid/external/liblhdcv5dec目录，并按照inc、include、src进行分类，并编写CMakeLists.txt：
+要启用拓展库，则是将android_external_lhdc中的lhdcv5dec的内容放到components/bt/host/bluedroid/external/liblhdcv5dec目录，并按照inc、include、src进行分类，并编写CMakeLists.txt：
 
 - inc：公共头文件；
 - include：私有头文件，其实就是“lhdcv5_util_dec.h”；
