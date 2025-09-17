@@ -552,7 +552,8 @@ extended-a2dp-bluedroid/250917_migrated_files/external-lib/liblhdcv5dec：
 
 OK，分析到这里大致确定缺少三个函数lhdcv5_util_dec_fetch_frame_info()、lhdcv5_util_dec_get_sample_size()、lhdcv5_util_dec_process()；他们都来源于未知文件lhdcv5_util_dec.c；
 
-观察lhdcv5_util_dec.h，其中声明了9个函数，具体如下：
+观察lhdcv5_util_dec.h，其中声明了9个函数，具体如下：  
+
 	```c
 	int32_t lhdcv5_util_init_decoder(uint32_t *ptr, uint32_t bitPerSample, uint32_t sampleRate, uint32_t scaleTo16Bits, uint32_t is_lossless_enable, lhdc_ver_t version);
 	int32_t lhdcv5_util_dec_process(uint8_t * pOutBuf, uint8_t * pInput, uint32_t InLen, uint32_t *OutLen);
@@ -565,7 +566,8 @@ OK，分析到这里大致确定缺少三个函数lhdcv5_util_dec_fetch_frame_in
 	int32_t lhdcv5_util_dec_get_mem_req(lhdc_ver_t version, uint32_t *mem_req_bytes);
 	```
 
-我继续测试移除lhdcv5_util_dec.c，提示缺少6个函数：
+我继续测试移除lhdcv5_util_dec.c，提示缺少6个函数：  
+
 	```c
 	缺少函数void lhdcv5_util_dec_register_log_cb(print_log_fp cb);
 	缺少函数int32_t lhdcv5_util_dec_get_mem_req(lhdc_ver_t version, uint32_t *mem_req_bytes);
@@ -574,7 +576,8 @@ OK，分析到这里大致确定缺少三个函数lhdcv5_util_dec_fetch_frame_in
 	缺少函数int32_t lhdcv5_util_dec_fetch_frame_info(uint8_t *frameData, uint32_t frameDataLen, lhdc_frame_Info_t *frameInfo);
 	缺少函数int32_t lhdcv5_util_dec_process(uint8_t * pOutBuf, uint8_t * pInput, uint32_t InLen, uint32_t *OutLen);
 	```
-但是lhdcv5_util_dec.h声明9个函数，另外三个是什么情况？：
+但是lhdcv5_util_dec.h声明9个函数，另外三个是什么情况？：  
+
 	```c
 	函数char *lhdcv5_util_dec_get_version();显然也被需要，其被用于lhdcv5BT_dec.c的编码器版本打印；
 	函数int32_t lhdcv5_util_dec_destroy();显然也被需要，其被用于lhdcv5BT_dec.c的lhdcv5BT_dec_deinit_decoder()函数，用来销毁解码器；
