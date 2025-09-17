@@ -4,7 +4,7 @@ An extended encoding test of A2DP on Bluedroid，目的是整合已有资源，�
 
 LHDCV5相关内容已移植，但缺乏关键文件lhdcv5_util_dec.c，目前只是根据现有内容写出了lhdcv5_util_dec.c的框架，正在逐步分析，试图写出lhdcv5_util_dec.c的完整内容；
 
-不过分析后发现，Savitech不太可能会随意给出核心解码的源文件，而自己写出又非常困难，离成功可能只差获得Savitech分发的lhdcv5_util_dec.so动态库，又或者是获得lhdcv5BT_dec.so，直接一步到位:)
+不过分析后发现，Savitech不太可能会随意给出核心解码的源文件，而自己写出又非常困难（不排除有非官方的高人能实现），解决问题的了一个思路是获得Savitech分发的lhdcv5_util_dec.so动态库，又或者是获得lhdcv5BT_dec.so，直接一步到位:)
 
 ## btstack_app_sf32
 
@@ -605,6 +605,8 @@ int32_t lhdcv5_util_dec_process(uint8_t * pOutBuf, uint8_t * pInput, uint32_t In
 
 因为直接提供源文件会使Savitech的专利没有价值，他们不太可能会干这种事...
 
-所以现在的问题变成了想办法获得Savitech分发的lhdcv5_util_dec.so动态库，又或者是获得lhdcv5BT_dec.so，直接一步到位:)
+不过话说回来，非官方写出lhdcv5_util_dec.c也是完全有可能的，他清楚LHDCV5编码的实现方式便可...
+
+总之现在解决问题多了一条途径：获得Savitech分发的lhdcv5_util_dec.so动态库，又或者是获得lhdcv5BT_dec.so，直接一步到位:)
 
 
