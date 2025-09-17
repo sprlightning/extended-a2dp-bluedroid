@@ -4,6 +4,8 @@ An extended encoding test of A2DP on Bluedroid，目的是整合已有资源，�
 
 LHDCV5相关内容已移植，但缺乏关键文件lhdcv5_util_dec.c，目前只是根据现有内容写出了lhdcv5_util_dec.c的框架，正在逐步分析，试图写出lhdcv5_util_dec.c的完整内容；
 
+不过分析后发现，Savitech不太可能会随意给出核心解码的源文件，而自己写出又非常困难，离成功可能只差获得Savitech分发的lhdcv5_util_dec.so动态库，又或者是获得lhdcv5BT_dec.so，直接一步到位:)
+
 ## btstack_app_sf32
 
 由O2C14创建，提供了适用于sf32的基于btstack蓝牙协议栈的lhdcv5应用，详见：[btstack_app_sf32](https://github.com/O2C14/btstack_app_sf32)。  
@@ -34,7 +36,7 @@ LHDCV5相关内容已移植，但缺乏关键文件lhdcv5_util_dec.c，目前只
 
 该项目主要适用于Linux环境。bluez-alsa/src目录便是这些拓展编码的源文件及头文件。
 
-### HP-H300BT
+## HP-H300BT
 
 Fanjianghua的HP-H300BT也具有lhdcv5的解码功能，详见[HP-H300BT](https://github.com/Fanjianghua/HP-H300BT)；
 
@@ -585,7 +587,7 @@ int32_t lhdcv5_util_dec_process(uint8_t * pOutBuf, uint8_t * pInput, uint32_t In
 
 那任务就很明确了，依据现有关系，先在lhdcv5_util_dec.c中实现这9个函数的框架，然后再此次编写出这9个函数实现功能的具体内容；
 
-### Next Plan
+### Next Plan1
 
 实现lhdcv5_util_dec.c中这9个函数的框架很容易（当前已实现），因为声明中函数的变量及其类型都给出了，函数的类型也给出了，返回值的类型确定了，返回值的具体内容则依据此函数被调用的地方逆推；
 
@@ -594,5 +596,15 @@ int32_t lhdcv5_util_dec_process(uint8_t * pOutBuf, uint8_t * pInput, uint32_t In
 目前正在逐步分析，试图写出lhdcv5_util_dec.c中对应函数的具体内容；
 
 所有移植&更新的内容已同步到本仓库，目录结构详见本章节“AOSP移植”，欢迎感兴趣的朋友一同测试交流经验；
+
+## 新的方向
+
+之前我一直试图寻找lhdcv5_util_dec.c，或者试图实现lhdcv5_util_dec.c的完整内容，在我观察了大多数这种LHDC案例后，发现底层的东西往往已动态库的形式分发；
+
+我就见到过类似lhdcBT.so的文件，所以不排除那些与Savitech合作的公司用的是lhdcv5_util_dec.so这种动态库，或者静态库lhdcv5_util_dec.a；
+
+因为直接提供源文件会使Savitech的专利没有价值，他们不太可能会干这种事...
+
+所以现在的问题变成了想办法获得Savitech分发的lhdcv5_util_dec.so动态库，又或者是获得lhdcv5BT_dec.so，直接一步到位:)
 
 
