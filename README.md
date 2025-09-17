@@ -1,6 +1,8 @@
 # extended-a2dp-bluedroid
 
-An extended encoding test of A2DP on Bluedroid，目的是整合已有资源，在sf32/esp32上验证LHDCV5等A2DP拓展编码，目前AAC、aptX[-LL & -HD]、LDAC、LC3 Plus、OPUS已验证可用；LHDC待移植；
+An extended encoding test of A2DP on Bluedroid，目的是整合已有资源，在sf32/esp32上验证LHDCV5等A2DP拓展编码，目前AAC、aptX[-LL & -HD]、LDAC、LC3 Plus、OPUS已验证可用；
+
+LHDCV5相关内容已移植，但缺乏关键文件lhdcv5_util_dec.c，目前只是根据现有内容写出了lhdcv5_util_dec.c的框架，正在逐步分析，试图写出lhdcv5_util_dec的完整内容；
 
 ## btstack_app_sf32
 
@@ -553,37 +555,32 @@ extended-a2dp-bluedroid/250917_migrated_files/external-lib/liblhdcv5dec：
 OK，分析到这里大致确定缺少三个函数lhdcv5_util_dec_fetch_frame_info()、lhdcv5_util_dec_get_sample_size()、lhdcv5_util_dec_process()；他们都来源于未知文件lhdcv5_util_dec.c；
 
 观察lhdcv5_util_dec.h，其中声明了9个函数，具体如下：  
-
-	```c
-	int32_t lhdcv5_util_init_decoder(uint32_t *ptr, uint32_t bitPerSample, uint32_t sampleRate, uint32_t scaleTo16Bits, uint32_t is_lossless_enable, lhdc_ver_t version);
-	int32_t lhdcv5_util_dec_process(uint8_t * pOutBuf, uint8_t * pInput, uint32_t InLen, uint32_t *OutLen);
-	char *lhdcv5_util_dec_get_version();
-	int32_t lhdcv5_util_dec_destroy();
-	void lhdcv5_util_dec_register_log_cb(print_log_fp cb);
-	int32_t lhdcv5_util_dec_get_sample_size (uint32_t *frame_samples);
-	int32_t lhdcv5_util_dec_fetch_frame_info(uint8_t *frameData, uint32_t frameDataLen, lhdc_frame_Info_t *frameInfo);
-	int32_t lhdcv5_util_dec_channel_selsect(lhdc_channel_t channel_type);
-	int32_t lhdcv5_util_dec_get_mem_req(lhdc_ver_t version, uint32_t *mem_req_bytes);
-	```
-
+```c
+1int32_t lhdcv5_util_init_decoder(uint32_t *ptr, uint32_t bitPerSample, uint32_t sampleRate, uint32_t scaleTo16Bits, uint32_t is_lossless_enable, lhdc_ver_t version);
+int32_t lhdcv5_util_dec_process(uint8_t * pOutBuf, uint8_t * pInput, uint32_t InLen, uint32_t *OutLen);
+char *lhdcv5_util_dec_get_version();
+int32_t lhdcv5_util_dec_destroy();
+void lhdcv5_util_dec_register_log_cb(print_log_fp cb);
+int32_t lhdcv5_util_dec_get_sample_size (uint32_t *frame_samples);
+int32_t lhdcv5_util_dec_fetch_frame_info(uint8_t *frameData, uint32_t frameDataLen, lhdc_frame_Info_t *frameInfo);
+int32_t lhdcv5_util_dec_channel_selsect(lhdc_channel_t channel_type);
+int32_t lhdcv5_util_dec_get_mem_req(lhdc_ver_t version, uint32_t *mem_req_bytes);
+```
 我继续测试移除lhdcv5_util_dec.c，提示缺少6个函数：  
-
-	```c
-	缺少函数void lhdcv5_util_dec_register_log_cb(print_log_fp cb);
-	缺少函数int32_t lhdcv5_util_dec_get_mem_req(lhdc_ver_t version, uint32_t *mem_req_bytes);
-	缺少函数int32_t lhdcv5_util_init_decoder(uint32_t *ptr, uint32_t bitPerSample, uint32_t sampleRate, uint32_t scaleTo16Bits, uint32_t is_lossless_enable, lhdc_ver_t version);
-	缺少函数int32_t lhdcv5_util_dec_channel_selsect(lhdc_channel_t channel_type);
-	缺少函数int32_t lhdcv5_util_dec_fetch_frame_info(uint8_t *frameData, uint32_t frameDataLen, lhdc_frame_Info_t *frameInfo);
-	缺少函数int32_t lhdcv5_util_dec_process(uint8_t * pOutBuf, uint8_t * pInput, uint32_t InLen, uint32_t *OutLen);
-	```
+```c
+void lhdcv5_util_dec_register_log_cb(print_log_fp cb);
+int32_t lhdcv5_util_dec_get_mem_req(lhdc_ver_t version, uint32_t *mem_req_bytes);
+int32_t lhdcv5_util_init_decoder(uint32_t *ptr, uint32_t bitPerSample, uint32_t sampleRate, uint32_t scaleTo16Bits, uint32_t is_lossless_enable, lhdc_ver_t version);
+int32_t lhdcv5_util_dec_channel_selsect(lhdc_channel_t channel_type);
+int32_t lhdcv5_util_dec_fetch_frame_info(uint8_t *frameData, uint32_t frameDataLen, lhdc_frame_Info_t *frameInfo);
+int32_t lhdcv5_util_dec_process(uint8_t * pOutBuf, uint8_t * pInput, uint32_t InLen, uint32_t *OutLen);
+```
 但是lhdcv5_util_dec.h声明9个函数，另外三个是什么情况？：  
-
-	```c
-	函数char *lhdcv5_util_dec_get_version();显然也被需要，其被用于lhdcv5BT_dec.c的编码器版本打印；
-	函数int32_t lhdcv5_util_dec_destroy();显然也被需要，其被用于lhdcv5BT_dec.c的lhdcv5BT_dec_deinit_decoder()函数，用来销毁解码器；
-	函数int32_t lhdcv5_util_dec_get_sample_size (uint32_t *frame_samples);显然也需要，其被用在lhdcv5BT_dec.c中，用于更新变量frame_samples；
-	```
-
+```c
+函数char *lhdcv5_util_dec_get_version();显然也被需要，其被用于lhdcv5BT_dec.c的编码器版本打印；
+函数int32_t lhdcv5_util_dec_destroy();显然也被需要，其被用于lhdcv5BT_dec.c的lhdcv5BT_dec_deinit_decoder()函数，用来销毁解码器；
+函数int32_t lhdcv5_util_dec_get_sample_size (uint32_t *frame_samples);显然也需要，其被用在lhdcv5BT_dec.c中，用于更新变量frame_samples；
+```
 所以现在很明确了，lhdcv5_util_dec.h中声明的9个函数都是有用的（虽然看起来和没说一样...）。
 
 那任务就很明确了，依据现有关系，先在lhdcv5_util_dec.c中实现这9个函数的框架，然后再此次编写出这9个函数实现功能的具体内容；
