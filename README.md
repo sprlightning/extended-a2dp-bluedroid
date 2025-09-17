@@ -4,7 +4,9 @@ An extended encoding test of A2DP on Bluedroid，目的是整合已有资源，�
 
 LHDCV5相关内容已移植，但缺乏关键文件lhdcv5_util_dec.c，目前只是根据现有内容写出了lhdcv5_util_dec.c的框架，正在逐步分析，试图写出lhdcv5_util_dec.c的完整内容；
 
-不过分析后发现，Savitech不太可能会随意给出核心解码的源文件，而自己写出又非常困难（不排除有非官方的高人能实现），解决问题的了一个思路是获得Savitech分发的lhdcv5_util_dec.so动态库，又或者是获得lhdcv5BT_dec.so，直接一步到位:)
+不过分析后发现，Savitech不太可能会随意给出核心解码的源文件，而自己写出又非常困难（不排除有非官方的高人能实现），解决问题的另一个思路是获得Savitech分发的lhdcv5_util_dec.so动态库，又或者是获得lhdcv5BT_dec.so，直接一步到位:)
+
+抛开LHDC V5编码核心文件的问题，现在有个新的问题，就是蓝牙连接后会自动断开，详见下方最新的日志；
 
 ## btstack_app_sf32
 
@@ -609,4 +611,52 @@ int32_t lhdcv5_util_dec_process(uint8_t * pOutBuf, uint8_t * pInput, uint32_t In
 
 总之现在解决问题多了一条途径：获得Savitech分发的lhdcv5_util_dec.so动态库，又或者是获得lhdcv5BT_dec.so，直接一步到位:)
 
+## 新的问题
+
+抛开LHDC V5编码核心文件的问题，现在有个新的问题，就是蓝牙连接后会自动断开，esp-idf终端日志如下：
+```c
+W (2051271) BT_APPL: new conn_srvc id:19, app_id:0
+I (2051741) WeiLeng-Player: bt连接状态: 2, 已连接
+W (2054471) BT_HCI: hci cmd send: sniff: hdl 0x81, intv(400 800)
+W (2054531) BT_HCI: hcif mode change: hdl 0x81, mode 2, intv 768, status 0x0
+W (2064391) BT_HCI: hcif mode change: hdl 0x81, mode 0, intv 0, status 0x0
+W (2064401) BT_APPL: bta_dm_act no entry for connected service cbs
+W (2064401) BT_AVCT: avct_lcb_last_ccb
+W (2064401) BT_AVCT: 0: aloc:1, lcb:0x0/0x3ffcf7fc, ccb:0x3ffcf864/0x3ffcf87c
+W (2064411) BT_AVCT: 1: aloc:1, lcb:0x3ffcf7fc/0x3ffcf7fc, ccb:0x3ffcf87c/0x3ffcf87c
+W (2064421) BT_AVCT: 2: aloc:0, lcb:0x0/0x3ffcf7fc, ccb:0x3ffcf894/0x3ffcf87c
+I (2064431) WeiLeng-Player: bt连接状态: 0, 已断开
+W (2068421) BT_HCI: hci cmd send: disconnect: hdl 0x81, rsn:0x13
+W (2068511) BT_HCI: hcif disc complete: hdl 0x81, rsn 0x16
+```
+reset & retry：
+```c
+W (4581) BT_APPL: new conn_srvc id:19, app_id:0
+I (5161) WeiLeng-Player: bt连接状态: 2, 已连接
+W (7781) BT_HCI: hci cmd send: sniff: hdl 0x81, intv(400 800)
+W (7781) BT_HCI: hcif mode change: hdl 0x81, mode 2, intv 768, status 0x0
+W (20041) BT_HCI: hci cmd send: unsniff: hdl 0x81
+W (20051) BT_APPL: bta_dm_act no entry for connected service cbs
+W (20051) BT_AVCT: avct_lcb_last_ccb
+W (20051) BT_AVCT: 0: aloc:1, lcb:0x0/0x3ffcf7fc, ccb:0x3ffcf864/0x3ffcf87c
+W (20061) BT_AVCT: 1: aloc:1, lcb:0x3ffcf7fc/0x3ffcf7fc, ccb:0x3ffcf87c/0x3ffcf87c
+W (20061) BT_AVCT: 2: aloc:0, lcb:0x0/0x3ffcf7fc, ccb:0x3ffcf894/0x3ffcf87c
+I (20081) WeiLeng-Player: bt连接状态: 0, 已断开
+W (20521) BT_HCI: hci cmd send: sniff: hdl 0x81, intv(400 800)
+W (20521) BT_HCI: hcif mode change: hdl 0x81, mode 0, intv 0, status 0x0
+W (20531) BT_HCI: hcif mode change: hdl 0x81, mode 2, intv 768, status 0x0
+W (24071) BT_HCI: hci cmd send: disconnect: hdl 0x81, rsn:0x13
+W (24361) BT_HCI: hcif mode change: hdl 0x81, mode 0, intv 0, status 0x0
+W (24441) BT_HCI: hcif disc complete: hdl 0x81, rsn 0x16
+```
+注意到问题TAG指向：BT_HCI、BT_APPL、BT_AVCT
+
+在menuconfig关掉LHDCV5的选项，再次编译，则蓝牙正常连接，日志是这样：
+```c
+W (5019) BT_APPL: new conn_srvc id:19, app_id:0
+I (5619) WeiLeng-Player: bt连接状态: 2, 已连接
+W (8229) BT_HCI: hci cmd send: sniff: hdl 0x81, intv(400 800)
+W (8229) BT_HCI: hcif mode change: hdl 0x81, mode 2, intv 768, status 0x0
+```
+所以后面准备分析一下，在menuconfig启用LHDCV5时，为什么蓝牙连接后会断开；
 
