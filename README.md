@@ -32,6 +32,12 @@ An extended encoding test of A2DP on Bluedroid，目的是整合已有资源，�
 
 该项目主要适用于Linux环境。bluez-alsa/src目录便是这些拓展编码的源文件及头文件。
 
+### HP-H300BT
+
+Fanjianghua的HP-H300BT也具有lhdcv5的解码功能，详见[HP-H300BT](https://github.com/Fanjianghua/HP-H300BT)；
+
+该项目本质上是“BES2600IHC TWS耳机”，属于ARM架构；其LHDC编码文件位于：HP-H300BT/apps/audioplayers/a2dp_decoder目录：如a2dp_decoder_lhdc.cpp、a2dp_decoder_lhdcv5.cpp等；
+
 ## esp-idf修改版
 
 由cfint创建，修改了esp-idf 5.1.4的bt部分，集成了大多数主流A2DP解码器，目前是没有LHDC，详见[esp-idf](https://github.com/cfint/esp-idf/tree/v5.1.4-a2dp-codecs)。esp-idf实现A2DP拓展编码的方式是Bluedroid。
@@ -62,7 +68,7 @@ esp-idf/components/bt/host/bluedroid/external目录：是包括LDAC在内的各�
 - esp-idf/components/bt/host/bluedroid/common/include/common目录：bluedroid_user_config.h：增加了条件判断，如“#ifdef CONFIG_BT_A2DP_LDAC_DECODER #define UC_BT_A2DP_LDAC_DECODER_ENABLED    CONFIG_BT_A2DP_LDAC_DECODER #define UC_BT_A2DP_LDAC_DECODER_ENABLED    FALSE #endif”，用来控制相关的解码器是否启用；
 - esp-idf/components/bt/host/bluedroid/common/include/common目录：bt_target.h：当经典蓝牙启用时，判断对应的解码器是否有启用的宏定义（bluedroid_user_config.h中的宏定义），然后据此来定义LDAC_DEC_INCLUDE是否为TRUE；然后还有依据CONFIG_BT_A2DP_LDAC_DECODER是否定义来定义AVDT_LDAC_SEPS的值，进而定义AVDT_NUM_SEPS的值；
 
-## My Plan
+## 250916-My-Plan
 
 目前的计划是参考android_external_lhdc、android_packages_modules_Bluetooth、btstack_app_sf32、bluez-alsa库的LHDCV5编码相关内容，依据cfint的esp-idf修改版的蓝牙部分中A2DP拓展方式（上述内容都已在本库中已集成），为这个修改版esp-idf拓展LHDCV5编码，初步在esp32上依靠修改的esp-idf实现LHDC编码。
 
@@ -396,4 +402,197 @@ esp-idf现存文件要修改的就是上面这些，本质上是依葫芦画瓢�
 难的是上面说的从Android到esp-idf Bluedroid的LHDCV5的解码器相关内容的移植，既要考虑esp-idf的需求（a2dp_vendor.c明确提出了10个函数），同时要考虑Android中LHDCV5的完整逻辑；
 
 欢迎感兴趣的朋友一同测试交流经验；
+
+## 250917-Migrate Files
+
+### 发现新内容
+
+- **Fanjianghua的HP-H300BT**
+
+	注意到Fanjianghua的HP-H300BT也具有lhdcv5的解码功能，其本质上是“BES2600IHC TWS耳机”的项目，详见[HP-H300BT](https://github.com/Fanjianghua/HP-H300BT)；
+
+	我已将HP-H300BT集成到本仓库中，用于分析；BES2600IHC是ARM架构，其LHDC编码文件位于：HP-H300BT/apps/audioplayers/a2dp_decoder目录：如a2dp_decoder_lhdc.cpp、a2dp_decoder_lhdcv5.cpp等；
+
+	所以HP-H300BT也有一定的参考价值；
+
+- **Savitech LHDC Codec for AOSP**
+
+	此外我注意到Savitech一直是开源了其LHDC系列编码，详见[Savitech LHDC Codec for AOSP](https://gitlab.com/savitech-lhdc)，可惜他们仍然未开源其核心组件如lhdcv5_util_dec等内容；
+
+	Savitech LHDC最新版本是15.0.0r4，详见[Savitech LHDC Codec AOSP 15.0.0r4](https://gitlab.com/savitech-lhdc/savitech-lhdc-codec-aosp-15.0.0r4)；
+
+	其蓝牙编码的内容与本仓库已集成的android_packages_modules_Bluetooth没有太大差异，故不重复集成了，可访问对于地址直接阅读；
+
+### AOSP移植
+
+我已经从AOSP（android_packages_modules_Bluetooth）移植与esp-idf-Bluedroid相关的内容，包括下列6个文件，并**已更新到本仓库**，均编译通过：
+```c
+extended-a2dp-bluedroid/250917_migrated_files/Bluedroid-a2dp-srcs：
+- a2dp_vendor_lhdcv5.c
+- a2dp_vendor_lhdcv5_decoder.c
+
+extended-a2dp-bluedroid/250917_migrated_files/Bluedroid-a2dp-incs：
+- a2dp_vendor_lhdcv5.h
+- a2dp_vendor_lhdcv5_decoder.h
+- a2dp_vendor_lhdc_constants.h
+- a2dp_vendor_lhdcv5_constants.h
+```
+
+我已经从android_external_lhdc移植了与lhdcv5解码器相关的库，包括下面个文件，**已更新到本仓库**，均编译通过：
+```c
+extended-a2dp-bluedroid/250917_migrated_files/external-lib/liblhdcv5dec：
+|- inc：
+|-- lhdcv5BT_dec.h
+|- include：
+|-- lhdcv5_util_dec.h
+|- src：
+|-- lhdcv5_util_dec.c
+|-- lhdcv5BT_dec.c
+|- CMakeLists.txt
+```
+
+现在的问题就是位于extended-a2dp-bluedroid/250917_migrated_files/external-lib/liblhdcv5dec的lhdcv5_util_dec.c文件是我依据lhdcv5_util_dec.h模拟出来的，不具备解码功能，仅解决了编译方面的问题；
+
+哪位朋友能提供真实的lhdcv5_util_dec.c文件？我会非常感谢！
+
+### 缺失的核心文件
+
+我说说是为什么会从esp-idf定位到lhdcv5_util_dec.c这个文件：
+- 从esp-idf的a2dp_vendor.c分析出需要a2dp_vendor_lhdcv5.h这个文件，并分析出需要10个lhdc方面的函数，因此在a2dp_vendor_lhdcv5.c中结合AOSP实现了这10个函数，其声明如下，位于a2dp_vendor_lhdcv5.h；
+	```c
+	tA2D_STATUS A2DP_ParseInfoLhdcv5(tA2DP_LHDCV5_CIE* p_ie, const uint8_t* p_codec_info, bool is_capability);
+	bool A2DP_IsVendorPeerSinkCodecValidLhdcv5(const uint8_t* p_codec_info);
+	tA2D_STATUS A2DP_IsVendorPeerSourceCodecValidLhdcv5(const uint8_t* p_codec_info);
+	btav_a2dp_codec_index_t A2DP_VendorSinkCodecIndexLhdcv5(const uint8_t* p_codec_info);
+	btav_a2dp_codec_index_t A2DP_VendorSourceCodecIndexLhdcv5(const uint8_t* p_codec_info);
+	bool A2DP_VendorInitCodecConfigLhdcv5(btav_a2dp_codec_index_t codec_index, UINT8* p_result);
+	bool A2DP_VendorBuildCodecConfigLhdcv5(UINT8* p_src_cap, UINT8* p_result);
+	const char* A2DP_VendorCodecNameLhdcv5(const uint8_t* p_codec_info);
+	bool A2DP_VendorCodecTypeEqualsLhdcv5(const uint8_t* p_codec_info_a, const uint8_t* p_codec_info_b);
+	const tA2DP_DECODER_INTERFACE* A2DP_GetVendorDecoderInterfaceLhdcv5(const uint8_t* p_codec_info);
+	```
+- 最后一个函数A2DP_GetVendorDecoderInterfaceLhdcv5()需要调用A2DP_LHDCV5_DecoderInterface()：
+	```c
+	const tA2DP_DECODER_INTERFACE* A2DP_GetVendorDecoderInterfaceLhdcv5(const uint8_t* p_codec_info) {
+		return A2DP_LHDCV5_DecoderInterface();
+	}
+	```
+- 函数A2DP_LHDCV5_DecoderInterface()定义在a2dp_vendor_lhdcv5_decoder.c，而这个函数会用到lhdcv5_decoder_interface，本质上是7个关于lhdcv5_decoder的函数：
+	```c
+	static const tA2DP_DECODER_INTERFACE lhdcv5_decoder_interface = {
+		a2dp_lhdcv5_decoder_init,
+		a2dp_lhdcv5_decoder_cleanup,
+		a2dp_lhdcv5_decoder_start,
+		a2dp_lhdcv5_decoder_suspend,
+		a2dp_lhdcv5_decoder_configure,
+		a2dp_lhdcv5_decoder_decode_header,
+		a2dp_lhdcv5_decoder_decode_packet
+	};
+	
+	const tA2DP_DECODER_INTERFACE* A2DP_LHDCV5_DecoderInterface(void) {
+		return &lhdcv5_decoder_interface;
+	}
+	```
+- lhdcv5_decoder_interface中的7个关于lhdcv5_decoder的函数，有3个函数依赖lhdcv5BT_dec.h：
+	```c
+	函数a2dp_lhdcv5_decoder_cleanup()需要lhdcv5BT_dec_deinit_decoder()；
+	函数a2dp_lhdcv5_decoder_decode_packet需要lhdcv5BT_dec_decode()和LHDCV5BT_DEC_API_SUCCEED；
+	函数a2dp_lhdcv5_decoder_configure需要tLHDCV5_DEC_CONFIG、lhdcv5BT_dec_init_decoder、LHDCV5BT_DEC_API_SUCCEED；
+	同时a2dp_vendor_lhdcv5_decoder.h的结构体tA2DP_LHDCV5_DECODER需要HANDLE_LHDCV5_BT；
+	```
+- 函数lhdcv5BT_dec_deinit_decoder()来自lhdcv5BT_dec.c，参数是HANDLE_LHDCV5_BT handle，这个HANDLE_LHDCV5_BT又来自lhdcv5_util.h，其实是个void *型定义；
+- 函数lhdcv5BT_dec_decode()也来自lhdcv5BT_dec.c；
+- 宏定义LHDCV5BT_DEC_API_SUCCEED来自lhdcv5BT_dec.h，本质上等效于ESP_OK，值为0；
+- 结构体tLHDCV5_DEC_CONFIG来自lhdcv5BT_dec.h，其实就是配置lhdc的基本参数，如采样率、位深等等；
+- 函数lhdcv5BT_dec_init_decoder()来自lhdcv5BT_dec.c；
+- lhdcv5BT_dec.c/.h都很容易获得，其中lhdcv5BT_dec.h包含了lhdcv5_util_dec.h，这个也能获得；
+- 那么看看，lhdcv5BT_dec.c/.h使用了哪些与lhdcv5_util_dec.c/.h的内容：
+	```c
+	lhdcv5BT_dec.h：类型lhdc_ver_t、类型HANDLE_LHDCV5_BT，都还好，不是什么大问题；
+	
+	lhdcv5BT_dec.c：主要是宏定义、类型、函数：
+	宏定义A2DP_LHDC_HDR_LATENCY_MASK、宏定义A2DP_LHDC_HDR_FRAME_NO_MASK、类型HANDLE_LHDCV5_BT、
+	宏定义LHDCV5_UTIL_DEC_SUCCESS、宏定义VERSION_5、宏定义LHDC_OUTPUT_STEREO、类型lhdc_frame_Info_t、宏定义LHDCV5_UTIL_DEC_ERROR_PARAM、
+	函数lhdcv5_util_dec_fetch_frame_info()、函数lhdcv5_util_dec_get_sample_size、函数lhdcv5_util_dec_process；
+	```
+下面逐一分析lhdcv5BT_dec.c/.h使用的与lhdcv5_util_dec.c/.h相关的内容：
+- 枚举lhdc_ver_t来自lhdcv5_util_dec.h，里面就一个东西：VERSION_5 = 550，内容如下：
+	```c
+	typedef enum {
+	  VERSION_5 = 550
+	}lhdc_ver_t;
+	```
+- 类型HANDLE_LHDCV5_BT来自lhdcv5_util_dec.h，内容如下：
+	```c
+	typedef void * HANDLE_LHDCV5_BT;
+	```
+- 宏定义A2DP_LHDC_HDR_LATENCY_MASK、宏定义A2DP_LHDC_HDR_FRAME_NO_MASK来自lhdcv5_util_dec.h，内容如下：
+	```c
+	#define A2DP_LHDC_HDR_LATENCY_MID   0x01
+	#define A2DP_LHDC_HDR_LATENCY_HIGH  0x02
+	#define A2DP_LHDC_HDR_LATENCY_MASK  (A2DP_LHDC_HDR_LATENCY_MID | A2DP_LHDC_HDR_LATENCY_HIGH)
+
+	#define A2DP_LHDC_HDR_FRAME_NO_MASK 0xfc
+	```
+- 宏定义LHDCV5_UTIL_DEC_SUCCESS来自lhdcv5_util_dec.h，也等效于ESP_OK，值为0；
+- 宏定义VERSION_5其实是个枚举，前面说了，它来自lhdcv5_util_dec.h，值为550；
+- 宏定义LHDC_OUTPUT_STEREO也是个枚举，来自lhdcv5_util_dec.h，值为0，具体如下：
+	```c
+	typedef enum {
+	  LHDC_OUTPUT_STEREO = 0,
+	  LHDC_OUTPUT_LEFT_CAHNNEL,
+	  LHDC_OUTPUT_RIGHT_CAHNNEL,
+	} lhdc_channel_t;
+	```
+- 类型lhdc_frame_Info_t在上面说了，来自lhdcv5_util_dec.h，属于声道模式枚举；
+- 宏定义LHDCV5_UTIL_DEC_ERROR_PARAM来自lhdcv5_util_dec.h，值为-2；
+- 函数lhdcv5_util_dec_fetch_frame_info()声明于lhdcv5_util_dec.h，显然其被定义在lhdcv5_util_dec.c，这个未知文件中；
+- 函数lhdcv5_util_dec_get_sample_size()声明于lhdcv5_util_dec.h，显然其被定义在lhdcv5_util_dec.c，这个未知文件中；
+- 函数lhdcv5_util_dec_process()声明于lhdcv5_util_dec.h，显然其被定义在lhdcv5_util_dec.c，这个未知文件中；
+
+OK，分析到这里大致确定缺少三个函数lhdcv5_util_dec_fetch_frame_info()、lhdcv5_util_dec_get_sample_size()、lhdcv5_util_dec_process()；他们都来源于未知文件lhdcv5_util_dec.c；
+
+观察lhdcv5_util_dec.h，其中声明了9个函数，具体如下：
+	```c
+	int32_t lhdcv5_util_init_decoder(uint32_t *ptr, uint32_t bitPerSample, uint32_t sampleRate, uint32_t scaleTo16Bits, uint32_t is_lossless_enable, lhdc_ver_t version);
+	int32_t lhdcv5_util_dec_process(uint8_t * pOutBuf, uint8_t * pInput, uint32_t InLen, uint32_t *OutLen);
+	char *lhdcv5_util_dec_get_version();
+	int32_t lhdcv5_util_dec_destroy();
+	void lhdcv5_util_dec_register_log_cb(print_log_fp cb);
+	int32_t lhdcv5_util_dec_get_sample_size (uint32_t *frame_samples);
+	int32_t lhdcv5_util_dec_fetch_frame_info(uint8_t *frameData, uint32_t frameDataLen, lhdc_frame_Info_t *frameInfo);
+	int32_t lhdcv5_util_dec_channel_selsect(lhdc_channel_t channel_type);
+	int32_t lhdcv5_util_dec_get_mem_req(lhdc_ver_t version, uint32_t *mem_req_bytes);
+	```
+
+我继续测试移除lhdcv5_util_dec.c，提示缺少6个函数：
+	```c
+	缺少函数void lhdcv5_util_dec_register_log_cb(print_log_fp cb);
+	缺少函数int32_t lhdcv5_util_dec_get_mem_req(lhdc_ver_t version, uint32_t *mem_req_bytes);
+	缺少函数int32_t lhdcv5_util_init_decoder(uint32_t *ptr, uint32_t bitPerSample, uint32_t sampleRate, uint32_t scaleTo16Bits, uint32_t is_lossless_enable, lhdc_ver_t version);
+	缺少函数int32_t lhdcv5_util_dec_channel_selsect(lhdc_channel_t channel_type);
+	缺少函数int32_t lhdcv5_util_dec_fetch_frame_info(uint8_t *frameData, uint32_t frameDataLen, lhdc_frame_Info_t *frameInfo);
+	缺少函数int32_t lhdcv5_util_dec_process(uint8_t * pOutBuf, uint8_t * pInput, uint32_t InLen, uint32_t *OutLen);
+	```
+但是lhdcv5_util_dec.h声明9个函数，另外三个是什么情况？：
+	```c
+	函数char *lhdcv5_util_dec_get_version();显然也被需要，其被用于lhdcv5BT_dec.c的编码器版本打印；
+	函数int32_t lhdcv5_util_dec_destroy();显然也被需要，其被用于lhdcv5BT_dec.c的lhdcv5BT_dec_deinit_decoder()函数，用来销毁解码器；
+	函数int32_t lhdcv5_util_dec_get_sample_size (uint32_t *frame_samples);显然也需要，其被用在lhdcv5BT_dec.c中，用于更新变量frame_samples；
+	```
+
+所以现在很明确了，lhdcv5_util_dec.h中声明的9个函数都是有用的（虽然看起来和没说一样...）。
+
+那任务就很明确了，依据现有关系，先在lhdcv5_util_dec.c中实现这9个函数的框架，然后再此次编写出这9个函数实现功能的具体内容；
+
+### Next Plan
+
+实现lhdcv5_util_dec.c中这9个函数的框架很容易（当前已实现），因为声明中函数的变量及其类型都给出了，函数的类型也给出了，返回值的类型确定了，返回值的具体内容则依据此函数被调用的地方逆推；
+
+然后实现这9个函数的具体功能，那就是要熟悉LHDC或类似的编码，结合其余关联的库、被调用的函数，推导出其实现功能的具体内容；
+
+目前正在逐步分析，试图写出lhdcv5_util_dec.c中对应函数的具体内容；
+
+所有移植&更新的内容已同步到本仓库，目录结构详见本章节“AOSP移植”，欢迎感兴趣的朋友一同测试交流经验；
+
 
