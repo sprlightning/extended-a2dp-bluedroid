@@ -2,7 +2,7 @@
 
 An extended encoding test of A2DP on Bluedroid，目的是整合已有资源，在sf32/esp32上验证LHDCV5等A2DP拓展编码，目前AAC、aptX[-LL & -HD]、LDAC、LC3 Plus、OPUS已验证可用；
 
-LHDCV5相关内容已移植，但缺乏关键文件lhdcv5_util_dec.c，目前只是根据现有内容写出了lhdcv5_util_dec.c的框架，正在逐步分析，试图写出lhdcv5_util_dec的完整内容；
+LHDCV5相关内容已移植，但缺乏关键文件lhdcv5_util_dec.c，目前只是根据现有内容写出了lhdcv5_util_dec.c的框架，正在逐步分析，试图写出lhdcv5_util_dec.c的完整内容；
 
 ## btstack_app_sf32
 
