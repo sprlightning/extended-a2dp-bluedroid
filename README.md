@@ -4,7 +4,7 @@ An extended encoding test of A2DP on Bluedroid，目的是整合已有资源，�
 
 LHDCV5相关内容已移植，但缺乏关键文件lhdcv5_util_dec.c，目前只是根据现有内容写出了lhdcv5_util_dec.c的框架，正在逐步分析，试图写出lhdcv5_util_dec.c的完整内容；
 
-关于移植后的适配调整详见：[esp-idf-extended-decoders](https://github.com/sprlightning/esp-idf-extended-decoders)，这里存储&讨论与LHDCV5编码相关的东西；
+这里只存储&讨论与LHDCV5编码相关的东西，关于移植后的适配调整详见：[esp-idf-extended-decoders](https://github.com/sprlightning/esp-idf-extended-decoders)；
 
 不过分析后发现，Savitech不太可能会随意给出核心解码的源文件，而自己写出又非常困难（不排除有非官方的高人能实现），解决问题的另一个思路是获得Savitech分发的lhdcv5_util_dec.so动态库，又或者是获得lhdcv5BT_dec.so，直接一步到位:)
 
