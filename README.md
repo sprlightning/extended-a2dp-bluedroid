@@ -611,5 +611,100 @@ int32_t lhdcv5_util_dec_process(uint8_t * pOutBuf, uint8_t * pInput, uint32_t In
 
 总之现在解决问题多了一条途径：获得Savitech分发的lhdcv5_util_dec.so动态库，又或者是获得lhdcv5BT_dec.so，直接一步到位:)
 
+## 250919_Changed Files
 
+### bug修复
+
+之前的LHDCV5内容在编译后会引起其余编码失效，导致蓝牙断连。
+
+逐一排查idf后发现是a2dp_vendor_lhdcv5_decoder.c提供的函数在decoder interface中未按照a2dp_codec_api.h中tA2DP_DECODER_INTERFACE的要求排序；
+
+还有就是函数A2DP_VendorInitCodecConfigLhdcv5出现了错误，已修正；
+
+此外依据a2dp_vendor_ldac.c/.h的格式重新编写了a2dp_vendor_lhdcv5.c/.h;
+
+依据a2dp_vendor_ldacbt_decoder.c/.h的格式重新编写了a2dp_vendor_lhdcv5_decoder.c/.h;
+
+到此已解决LHDCV5编码启用的问题，虽然LHDCV5解码功能不可用，但是现在启用LHDCV5编译，也不会对其余编码造成影响了，蓝牙也能正常连接；
+
+### 引入新的库
+
+观察bt的CMakeLists.txt可以发现，ldac一直以来用的都是a2dp_vendor_ldacbt_decoder.c这个解码器文件，其调用的是O2C14的libldac-dec外部解码库，包含的api头文件ldacBT.h，效果挺不错的；
+
+而文件a2dp_vendor_ldac_decoder.c则未被包含，其用的是cfint和Thealexbarney开发的外部库libldacdec，包含的api头文件是ldacdec.h，效果不佳，会断断续续，原因未知；
+
+libldacdec也以上传到仓库；
+
+本次一共上传了这些内容：
+```c
+250919_changed_files:
+|- a2dp_incs
+|-- a2dp_vendor_ldac.h
+|-- a2dp_vendor_ldac_decoder.h
+|-- a2dp_vendor_lhdcv5.h
+|-- a2dp_vendor_lhdcv5_decoder.h
+|
+|- a2dp_srcs
+|-- a2dp_vendor.c
+|-- a2dp_vendor_ldac.c
+|-- a2dp_vendor_ldac_decoder.c
+|-- a2dp_vendor_ldacbt_decoder.c
+|-- a2dp_vendor_lhdcv5.c
+|-- a2dp_vendor_lhdcv5_decoder.c
+|
+|- bt-CMakeLists
+|-- CMakeLists.txt
+|
+|- external-lib
+|-- libldacdec
+|--- inc
+|---- ldacdec.h
+|--- include
+|---- bit_allocation.h
+|---- bit_reader.h
+|---- huffCodes.h
+|---- imdct.h
+|---- log.h
+|---- libldacdec.h
+|---- spectrum.h
+|---- utility.h
+|--- src
+|---- bit_allocation.c
+|---- bit_reader.c
+|---- huffCodes.c
+|---- imdct.c
+|---- libldacdec.c
+|---- spectrum.c
+|---- utility.c
+|--- CMakeLists.txt
+|--- README.md
+```
+
+bt-CMakeLists中的CMakeLists.txt是bt目录的全局CMakeLists文件，新增了不太好用的libldacdec外部库：
+```c
+if(CONFIG_BT_A2DP_LDAC_DECODER)
+    list(APPEND priv_include_dirs host/bluedroid/external/libldac-dec/src
+                                  host/bluedroid/external/libldac-dec/inc
+								  host/bluedroid/external/libldacdec/inc
+								  host/bluedroid/external/libldacdec/include)
+    list(APPEND ldacbt_dec_srcs "host/bluedroid/external/libldac-dec/src/ldacBT.c"
+                                "host/bluedroid/external/libldac-dec/src/ldaclib.c")
+	list(APPEND ldac_dec_srcs "host/bluedroid/external/libldacdec/src/bit_allocation.c"
+							  "host/bluedroid/external/libldacdec/src/bit_reader.c"
+							  "host/bluedroid/external/libldacdec/src/huffCodes.c"
+							  "host/bluedroid/external/libldacdec/src/imdct.c"
+							  "host/bluedroid/external/libldacdec/src/libldacdec.c"
+							  "host/bluedroid/external/libldacdec/src/spectrum.c"
+							  "host/bluedroid/external/libldacdec/src/utility.c")
+    list(APPEND srcs ${ldacbt_dec_srcs})
+	list(APPEND srcs ${ldac_dec_srcs})
+
+    list(APPEND srcs "host/bluedroid/stack/a2dp/a2dp_vendor_ldac.c"
+                     "host/bluedroid/stack/a2dp/a2dp_vendor_ldacbt_decoder.c")
+endif()
+```
+
+其中APPEND srcs "host/bluedroid/stack/a2dp/a2dp_vendor_ldacbt_decoder.c"便是启用a2dp_vendor_ldacbt_decoder.c；
+
+改成"host/bluedroid/stack/a2dp/a2dp_vendor_ldac_decoder.c"便是启用a2dp_vendor_ldac_decoder.c；
 
