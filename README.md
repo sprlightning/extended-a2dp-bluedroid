@@ -708,3 +708,160 @@ endif()
 
 改成"host/bluedroid/stack/a2dp/a2dp_vendor_ldac_decoder.c"便是启用a2dp_vendor_ldac_decoder.c；
 
+## 2509191841_Changed Files
+
+在之前的基础上，参考AOSP重新移植适配了a2dp_vendor_lhdcv5.c/.h，以及a2dp_vendor_lhdcv5_decoder.c/.h；因为之前的cie处理函数有可能有问题；
+
+现在修改后则是完全按照AOSP来创建这些数据结构；从实际测试来看，编译通过，但在连接蓝牙前还是出现了问题导致esp32未包含LHDCV5编码能力，手机自然认为esp32不支持LHDCV5，相关日志如下：
+```c
+I (2322) WeiLeng-Player: ESP32初始化完成，开始启动A2DP Sink...
+I (3322) BTDM_INIT: BT controller compile version [1175e0a]
+I (3322) BTDM_INIT: Bluetooth MAC: ec:e3:34:ca:c5:fa
+I (3322) phy_init: phy_version 4791,2c4672b,Dec 20 2023,16:06:06
+I (3772) main_task: Returned from app_main()
+W (3772) BT_BTC: A2DP Enable with AVRC
+E (3782) BT_LOG: LHDCV5: invalid codec subversion (0x{10})
+E (3782) BT_LOG: A2DP_InitCodecConfig: unsupported codec index 17
+W (3782) BT_AV: connect_to to 3c:38:24:5c:4a:cf
+W (3792) BT_APPL: reset flags
+I (3792) WeiLeng-Player: bt连接状态: 1, 正在连接
+W (7072) BT_HCI: hcif conn complete: hdl 0x81, st 0x0
+W (7092) BT_HCI: hcif link supv_to changed: hdl 0x81, supv_to 8000
+E (7192) BT_APPL: bta_av_rc_create ACP handle exist for shdl:0
+I (7252) BT_LOG: a2dp_ldac_decoder_configure: LDAC Sampling frequency = 48000
+I (7252) BT_LOG: a2dp_ldac_decoder_configure: LDAC Channel mode: Stereo
+I (7252) CODEC_CONFIG: a2dp audio_cfg_cb , codec type 255
+I (7262) CODEC_CONFIG: get_codec_config: Configure audio player 2d-1-0-0-aa-0
+I (7272) CODEC_CONFIG: get_codec_config: configure LDAC codec
+I (7272) WeiLeng-Player: 检测到A2DP音频配置变更(LDAC | 48000Hz | 32bit | 2chs), 准备同步到codec
+W (7282) BT_APPL: new conn_srvc id:19, app_id:0
+I (7292) cs43131: Updating dual CS43131: 48000Hz | 32bit | Master
+I (7302) cs43131: ASP时序配置: 48000Hz | 32bit | N=1(1, 0) | M=8(8, 0) | LCHI=31(31, 0) | LCPR=63(63, 0)
+I (7312) cs43131: Master's ASP LRCK start 延迟是1.0delay(0x0A), 适用于LDAC编码
+I (7322) cs43131: Dual CS43131 update success
+I (7892) WeiLeng-Player: bt连接状态: 2, 已连接
+I (8032) WeiLeng-Player: ====== 发现歌曲 ======
+I (8032) WeiLeng-Player: 标题: 盛夏的果实 | 艺术家: 莫文蔚 | 专辑: NO.1新曲精选全记录20首 | 流派:  | 曲目号: 1
+I (8042) WeiLeng-Player: ======================
+W (10492) BT_HCI: hci cmd send: sniff: hdl 0x81, intv(400 800)
+W (10492) BT_HCI: hcif mode change: hdl 0x81, mode 2, intv 768, status 0x0
+W (164992) BT_HCI: hcif mode change: hdl 0x81, mode 0, intv 0, status 0x0
+I (165002) BT_LOG: bta_av_link_role_ok hndl:x41 role:1 conn_audio:x1 bits:1 features:x864b
+
+W (165002) BT_APPL: new conn_srvc id:19, app_id:1
+I (165012) WeiLeng-Player: 音频已开始, 功放已使能
+```
+
+### 测试分析
+
+上面的日志精简一下主要是下面两条，涉及连接蓝牙前的编码处理：
+```c
+E (3782) BT_LOG: LHDCV5: invalid codec subversion (0x{10})
+E (3782) BT_LOG: A2DP_InitCodecConfig: unsupported codec index 17
+```
+日志“E (3782) BT_LOG: LHDCV5: invalid codec subversion (0x{10})”，可以定位到a2dp_vendor_lhdcv5.c(文件在目录2509191841_changed_files)的函数A2DP_BuildInfoLhdcv5()，片段如下：
+```c
+// P8[3:0] Codec SubVersion
+if ((p_ie->version & A2DP_LHDCV5_VERSION_MASK) != A2DP_LHDCV5_VER_NS) {
+	para = para | (p_ie->version & A2DP_LHDCV5_VERSION_MASK);
+} else {
+	LOG_ERROR( "LHDCV5: invalid codec subversion (0x{%02x})",  p_ie->version);
+	return A2DP_INVALID_PARAMS;
+}
+```
+巧的是A2DP_BuildInfoLhdcv5()函数是用于构建LHDCV5音频编码能力信息的函数，其中的p8[3:0]存储的正是编解码器的版本信息，那就说明这个版本信息有问题；
+
+另一个日志“E (3782) BT_LOG: A2DP_InitCodecConfig: unsupported codec index 17”可以定位到a2dp_codec_config.c(在目录esp-idf/components/bt/host/bluedroid/stack/a2dp)，该函数如下：
+```c
+bool A2DP_InitCodecConfig(btav_a2dp_codec_index_t codec_index, UINT8 *p_result) {
+
+  LOG_VERBOSE("%s: codec_index = %d", __func__, codec_index);
+
+  if (A2DP_InitCodecConfigSbc(codec_index, p_result)) {
+    return true;
+  }
+
+#if (defined(AAC_DEC_INCLUDED) && AAC_DEC_INCLUDED == TRUE)
+  if (A2DP_InitCodecConfigAac(codec_index, p_result)) {
+    return true;
+  }
+#endif
+
+  if (A2DP_VendorInitCodecConfig(codec_index, p_result)) {
+    return true;
+  }
+
+  LOG_ERROR("%s: unsupported codec index %u", __func__, codec_index);
+  return false;
+}
+```
+可以推测是执行A2DP_VendorInitCodecConfig(codec_index, p_result)时未返回true，就触发了最终的报错，从日志可以看到codec_index是17；
+
+追踪codex_index的定义可到esp-idf/components/bt/host/bluedroid/stack/a2dp/include/bt_av.h（文件在目录2509191841_changed_files）的btav_a2dp_codec_index_t结构体，修改版的内容如下：
+```c
+/*
+ * Enum values for each A2DP supported codec.
+ * There should be a separate entry for each A2DP codec that is supported
+ * for encoding (SRC), and for decoding purpose (SINK).
+ */
+typedef enum {
+  BTAV_A2DP_CODEC_INDEX_SOURCE_MIN = 0,
+
+  // Add an entry for each source codec here.
+  BTAV_A2DP_CODEC_INDEX_SOURCE_SBC = 0,
+#if (defined(AAC_DEC_INCLUDED) && AAC_DEC_INCLUDED == TRUE)
+  BTAV_A2DP_CODEC_INDEX_SOURCE_AAC,
+#endif /* AAC_DEC_INCLUDED */
+#if (defined(APTX_DEC_INCLUDED) && APTX_DEC_INCLUDED == TRUE)
+  BTAV_A2DP_CODEC_INDEX_SOURCE_APTX,
+  BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_HD,
+  BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_LL,
+#endif /* APTX_DEC_INCLUDED */
+#if (defined(LDAC_DEC_INCLUDED) && LDAC_DEC_INCLUDED == TRUE)
+  BTAV_A2DP_CODEC_INDEX_SOURCE_LDAC,
+#endif /* LDAC_DEC_INCLUDED */
+#if (defined(OPUS_DEC_INCLUDED) && OPUS_DEC_INCLUDED == TRUE)
+  BTAV_A2DP_CODEC_INDEX_SOURCE_OPUS,
+#endif /* OPUS_DEC_INCLUDED */
+#if (defined(LC3PLUS_DEC_INCLUDED) && LC3PLUS_DEC_INCLUDED == TRUE)
+  BTAV_A2DP_CODEC_INDEX_SOURCE_LC3PLUS,
+#endif /* LC3PLUS_DEC_INCLUDED */
+#if (defined(LHDCV5_DEC_INCLUDED) && LHDCV5_DEC_INCLUDED == TRUE)
+  BTAV_A2DP_CODEC_INDEX_SOURCE_LHDCV5,
+#endif /* LHDCV5_DEC_INCLUDED */
+
+  BTAV_A2DP_CODEC_INDEX_SOURCE_MAX,
+
+  BTAV_A2DP_CODEC_INDEX_SINK_MIN = BTAV_A2DP_CODEC_INDEX_SOURCE_MAX,
+
+  // Add an entry for each sink codec here
+  BTAV_A2DP_CODEC_INDEX_SINK_SBC = BTAV_A2DP_CODEC_INDEX_SINK_MIN,
+#if (defined(AAC_DEC_INCLUDED) && AAC_DEC_INCLUDED == TRUE)
+  BTAV_A2DP_CODEC_INDEX_SINK_AAC,
+#endif /* AAC_DEC_INCLUDED */
+#if (defined(APTX_DEC_INCLUDED) && APTX_DEC_INCLUDED == TRUE)
+  BTAV_A2DP_CODEC_INDEX_SINK_APTX,
+  BTAV_A2DP_CODEC_INDEX_SINK_APTX_HD,
+  BTAV_A2DP_CODEC_INDEX_SINK_APTX_LL,
+#endif /* APTX_DEC_INCLUDED */
+#if (defined(LDAC_DEC_INCLUDED) && LDAC_DEC_INCLUDED == TRUE)
+  BTAV_A2DP_CODEC_INDEX_SINK_LDAC,
+#endif /* LDAC_DEC_INCLUDED */
+#if (defined(OPUS_DEC_INCLUDED) && OPUS_DEC_INCLUDED == TRUE)
+  BTAV_A2DP_CODEC_INDEX_SINK_OPUS,
+#endif /* OPUS_DEC_INCLUDED */
+#if (defined(LC3PLUS_DEC_INCLUDED) && LC3PLUS_DEC_INCLUDED == TRUE)
+  BTAV_A2DP_CODEC_INDEX_SINK_LC3PLUS,
+#endif /* LC3PLUS_DEC_INCLUDED */
+#if (defined(LHDCV5_DEC_INCLUDED) && LHDCV5_DEC_INCLUDED == TRUE)
+  BTAV_A2DP_CODEC_INDEX_SINK_LHDCV5,
+#endif /* LHDCV5_DEC_INCLUDED */
+
+  BTAV_A2DP_CODEC_INDEX_SINK_MAX,
+
+  BTAV_A2DP_CODEC_INDEX_MIN = BTAV_A2DP_CODEC_INDEX_SOURCE_MIN,
+  BTAV_A2DP_CODEC_INDEX_MAX = BTAV_A2DP_CODEC_INDEX_SINK_MAX
+} btav_a2dp_codec_index_t;
+```
+
+所有编码都已启用，所以17应该是BTAV_A2DP_CODEC_INDEX_SINK_OPUS, 这个就很奇怪，LHDCV5实际是在19，所以这里确实有问题，到底是为什么出现这种情况，还要进一步分析；
